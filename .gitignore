@@ -1,0 +1,65 @@
+# Local scratch & temporary files
+scratch/
+tmp/
+temp/
+
+
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Build & distribution
+build/
+dist/
+*.egg-info/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+credentials.json
+
+# Node & web dependencies (client & server)
+node_modules/
+.npm/
+dist/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor & IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System metadata
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Large datasets & raw data
+ML/data/raw/*
+!ML/data/raw/.gitkeep
+ML/data/processed/*
+!ML/data/processed/.gitkeep
