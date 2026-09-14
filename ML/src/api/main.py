@@ -17,24 +17,55 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+import os
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient
+
+# Load environment variables
+load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR / ".env")
+
 from src.inference.predict import PhishingDetector
 
 from contextlib import asynccontextmanager
 
-# Global detector instance
+# Global detector and database instances
 detector: Optional[PhishingDetector] = None
+mongo_client: Optional[AsyncIOMotorClient] = None
+scans_collection = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global detector
+    global detector, mongo_client, scans_collection
     try:
         detector = PhishingDetector()
         print("DePhish detector model initialized successfully.")
     except Exception as exc:
         print(f"Warning: Model could not be initialized on startup ({exc}).")
         detector = None
+
+    # Connect to MongoDB Atlas if URI is configured
+    mongodb_uri = os.getenv("MONGODB_URI")
+    if mongodb_uri:
+        try:
+            mongo_client = AsyncIOMotorClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+            db_name = os.getenv("DB_NAME", "dephish_db")
+            db = mongo_client[db_name]
+            coll_name = os.getenv("COLLECTION_NAME", "scan_reports")
+            scans_collection = db[coll_name]
+            await mongo_client.admin.command("ping")
+            print(f"Connected to MongoDB Atlas successfully: '{db_name}.{coll_name}'")
+        except Exception as exc:
+            print(f"Warning: Could not connect to MongoDB Atlas ({exc}).")
+            mongo_client = None
+            scans_collection = None
+
     yield
+
+    if mongo_client is not None:
+        mongo_client.close()
 
 
 app = FastAPI(
@@ -42,8 +73,8 @@ app = FastAPI(
     description="Backend ML service for phishing message scanning, risk scoring, and explainable indicator analysis.",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url=None,
-    redoc_url=None,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # Enable CORS for React client / Express server
@@ -130,8 +161,8 @@ class BatchAnalyzeResponse(BaseModel):
 # API Endpoints
 @app.get("/health", tags=["System"])
 def health_check():
-    """Health check endpoint confirming service status and model readiness."""
-    global detector
+    """Health check endpoint confirming service status, model readiness, and MongoDB Atlas connection."""
+    global detector, scans_collection
     if detector is None:
         try:
             detector = PhishingDetector()
@@ -141,6 +172,7 @@ def health_check():
     return {
         "status": "healthy" if is_ready else "degraded",
         "model_loaded": is_ready,
+        "mongodb_connected": scans_collection is not None,
         "service": "DePhish-ML-Backend",
         "version": "1.0.0",
     }
@@ -163,17 +195,57 @@ def model_info():
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse, tags=["Inference"])
-def analyze_message(req: AnalyzeRequest):
-    """Scans and analyzes a single email or SMS message."""
+async def analyze_message(req: AnalyzeRequest):
+    """Scans and analyzes a single email or SMS message, persisting results in MongoDB Atlas."""
     det = get_detector()
     result = det.analyze(req.text, message_type=req.type)
+
+    if scans_collection is not None:
+        try:
+            scan_doc = {
+                "submitted_text": req.text,
+                "message_type": req.type,
+                "prediction": result.get("prediction"),
+                "risk_score": result.get("risk_score"),
+                "risk_level": result.get("risk_level"),
+                "confidence": result.get("confidence"),
+                "probabilities": result.get("probabilities"),
+                "phishing_type": result.get("phishing_type"),
+                "detected_indicators": result.get("detected_indicators"),
+                "detected_urls": result.get("detected_urls"),
+                "model_version": result.get("model_version"),
+                "scoring_version": result.get("scoring_version"),
+                "status": "Pending Review",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            await scans_collection.insert_one(scan_doc)
+            print(f"[MongoDB Atlas] Scan saved: {result.get('prediction')} ({result.get('risk_score')}%)")
+        except Exception as exc:
+            print(f"Warning: Could not save scan to MongoDB Atlas ({exc})")
+
     return result
 
 
 @app.post("/api/predict", response_model=AnalyzeResponse, tags=["Inference"])
-def predict_message(req: AnalyzeRequest):
+async def predict_message(req: AnalyzeRequest):
     """Alias for /api/analyze."""
-    return analyze_message(req)
+    return await analyze_message(req)
+
+
+@app.get("/api/scans", tags=["Inference"])
+async def get_scans(limit: int = 50):
+    """Retrieves recent scan records stored in MongoDB Atlas."""
+    if scans_collection is None:
+        return {"scans": [], "mongodb_connected": False}
+    try:
+        cursor = scans_collection.find().sort("timestamp", -1).limit(limit)
+        scans = []
+        async for doc in cursor:
+            doc["id"] = str(doc.pop("_id"))
+            scans.append(doc)
+        return {"scans": scans, "total": len(scans), "mongodb_connected": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to query MongoDB: {exc}")
 
 
 @app.post("/api/batch-predict", response_model=BatchAnalyzeResponse, tags=["Inference"])
