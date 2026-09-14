@@ -28,4 +28,6 @@ or set `VITE_ML_API_URL` to its reachable origin before running `npm run build`.
 Scores, classifications, indicators, and URLs come from the ML service. Failures
 are shown in the scanner with a retry available; no demo score is substituted.
 Scan history contains scans from the current page session and resets on refresh.
-Authentication, reports, and admin statistics remain the existing demo features.
+Authentication uses the Atlas-ready Express server; see [server setup](server/README.md). Accounts remain unavailable until Atlas is configured. Reports and admin statistics remain demo features.
+
+For login/signup, run `npm ci` and `npm run dev` from `server/` in a third terminal. Restart Vite to load the authentication proxy.

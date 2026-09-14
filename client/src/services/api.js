@@ -1,4 +1,5 @@
 import { api as mockApi } from './mockApi.js';
+import { authApi } from './authApi.js';
 
 const baseUrl = (import.meta.env?.VITE_ML_API_URL || '').replace(/\/$/, '');
 const scans = [];
@@ -43,8 +44,9 @@ export async function analyzeMessage(text, type = 'email') {
   }
 }
 
-// Authentication and community reports still use the existing demo service.
+// Community reports remain demo data until their backend is implemented.
 export const api = {
-  ...mockApi,
-  scans: { analyze: analyzeMessage, list: async () => [...scans], get: async id => scans.find(scan => scan.id === id) },
+  reports: mockApi.reports,
+  auth: authApi,
+  scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: async () => [...scans], get: async id => scans.find(scan => scan.id === id) },
 };
