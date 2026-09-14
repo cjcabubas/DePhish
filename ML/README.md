@@ -1,176 +1,84 @@
-# DePhish — Machine Learning Subsystem & Serving API
+# DePhish ML Service
 
-The Machine Learning subsystem for **DePhish** detects phishing attacks across email and SMS messages using combined natural language processing (TF-IDF word & character n-grams) and explainable heuristic indicators (urgency, credential harvesting, financial baits, authority impersonation, and structural URL analysis).
+FastAPI service for analyzing email and SMS text. It uses a calibrated Linear SVM with word TF-IDF features and rule-derived indicators. The React frontend is in `client/`; see the [project setup guide](../README.md).
 
----
+## Setup and run
 
-## Directory Layout
-
-```text
-ML/
-├── data/
-│   ├── raw/                        # Original source datasets
-│   └── processed/
-│       ├── phishing_dataset.csv    # Merged input dataset (24,224 rows)
-│       ├── dataset.csv             # Cleaned & deduplicated master dataset
-│       ├── train.csv               # Stratified training set (80%)
-│       └── test.csv                # Stratified testing set (20%)
-├── models/
-│   ├── phishing_model.pkl          # Serialized production classifier
-│   ├── tfidf_vectorizer.pkl        # Fitted TF-IDF vectorizer
-│   └── metadata.json               # Model version, metrics, hyperparameters
-├── reports/
-│   ├── metrics.json                # Accuracy, Precision, Recall, F1, ROC-AUC
-│   ├── confusion_matrix.png        # Confusion matrix visual
-│   └── misclassified.csv           # Test set error inspection
-├── src/
-│   ├── data/
-│   │   ├── inspect_data.py         # Inspect dataset distribution & statistics
-│   │   └── preprocess.py          # Data cleaning, deduplication, train/test split
-│   ├── features/
-│   │   ├── text_features.py        # TF-IDF vectorizer & feature pipeline
-│   │   ├── url_features.py         # URL extraction & structural lexical analysis
-│   │   └── indicator_features.py   # Heuristic phishing & social engineering indicators
-│   ├── training/
-│   │   ├── train.py                # Model training with calibrated probabilities
-│   │   ├── evaluate.py             # Evaluation & report generator
-│   │   └── compare_models.py       # Benchmark comparison across candidate models
-│   ├── inference/
-│   │   └── predict.py              # PhishingDetector class (0-100 risk score, explainable indicators)
-│   └── api/
-│       └── main.py                 # FastAPI server exposing prediction & analysis endpoints
-├── tests/
-│   ├── test_preprocess.py          # Preprocessing unit tests
-│   ├── test_features.py            # Feature & indicator extraction unit tests
-│   └── test_predict.py             # Inference & contract tests
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Setup & Installation
-
-From the project root:
+Run these commands from the repository root. Create the environment only if `.venv` does not already exist:
 
 ```powershell
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1
-
-# Install ML dependencies
-pip install -r ML/requirements.txt
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r ML/requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn ML.src.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
----
+The trained artifacts in `ML/models/` are included, so retraining is not required to run scans. Keep the scikit-learn version pinned in `requirements.txt` compatible with those artifacts.
 
-## Pipeline Execution
+Check service readiness at [localhost:8000/health](http://localhost:8000/health). Swagger UI (`/docs`) and ReDoc (`/redoc`) are currently disabled in `src/api/main.py`.
 
-### 1. Inspect Dataset
-```powershell
-python ML/src/data/inspect_data.py
-```
+## API endpoints
 
-### 2. Preprocess & Split Data
-Cleans whitespace, deduplicates entries, and performs stratified 80/20 train/test split:
-```powershell
-python ML/src/data/preprocess.py
-```
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Service health and model readiness |
+| GET | `/api/model/info` | Model metadata and locally available evaluation metrics |
+| POST | `/api/analyze` | Analyze one message |
+| POST | `/api/predict` | Alias for `/api/analyze` |
+| POST | `/api/batch-predict` | Analyze up to 100 messages |
 
-### 3. Compare Models (Optional Benchmark)
-Benchmarks Naive Bayes, Logistic Regression, Linear SVM, and Random Forest:
-```powershell
-python ML/src/training/compare_models.py
-```
+Single-message requests accept nonblank `text` up to 5,000 characters and a `type` of `email`, `sms`, or `auto` (default).
 
-### 4. Train Model
-Fits the production calibrated model and exports artifacts into `ML/models/`:
-```powershell
-python ML/src/training/train.py
-```
-
-### 5. Evaluate Model
-Evaluates performance against `test.csv`, exports metrics to `ML/reports/metrics.json`, saves `confusion_matrix.png` and `misclassified.csv`:
-```powershell
-python ML/src/training/evaluate.py
-```
-
-### 6. Run Unit Tests
-```powershell
-pytest ML/tests/ -v
-```
-
----
-
-## Serving the API
-
-Start the FastAPI server:
-
-```powershell
-uvicorn ML.src.api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Interactive Swagger documentation is available at:
-`http://localhost:8000/docs`
-
-### API Endpoints
-
-- `GET /health` — Service health and model status
-- `GET /api/model/info` — Model metadata and test evaluation metrics
-- `POST /api/analyze` — Single message analysis (returns risk score, level, confidence, and explainable indicators)
-- `POST /api/predict` — Alias for `/api/analyze`
-- `POST /api/batch-predict` — Batch message analysis
-
-#### Sample Request (`POST /api/analyze`):
 ```json
 {
-  "text": "URGENT: Your account has been suspended! Verify your credentials here: http://192.168.1.1/login",
+  "text": "Please review the meeting agenda for tomorrow.",
   "type": "email"
 }
 ```
 
-#### Sample Response:
-```json
-{
-  "prediction": "Phishing",
-  "risk_score": 98.4,
-  "risk_level": "High Risk",
-  "confidence": 0.984,
-  "probabilities": {
-    "legitimate": 0.016,
-    "phishing": 0.984
-  },
-  "phishing_type": "Credential Harvesting",
-  "detected_indicators": [
-    {
-      "category": "urgency_pressure",
-      "title": "Urgency and Coercion",
-      "description": "Uses urgent deadlines, fear, or panic tactics to force hasty compliance.",
-      "severity": "high",
-      "matched_terms": ["urgent", "account has been suspended"]
-    },
-    {
-      "category": "credential_harvesting",
-      "title": "Credential or Identity Solicitation",
-      "description": "Prompts recipient to submit, verify, or reset sensitive credentials.",
-      "severity": "high",
-      "matched_terms": ["verify your credentials"]
-    }
-  ],
-  "detected_urls": [
-    {
-      "url": "http://192.168.1.1/login",
-      "hostname": "192.168.1.1",
-      "is_ip": true,
-      "has_at_symbol": false,
-      "has_hyphen": false,
-      "is_shortener": false,
-      "is_suspicious_tld": false,
-      "excessive_subdomains": false,
-      "has_double_slash_path": false,
-      "length": 25
-    }
-  ],
-  "message_type": "email",
-  "model_version": "1.0.0"
-}
+Batch requests wrap these objects in a `messages` array. Responses include classification, risk score and level, binary model confidence and probabilities, rule-derived scam category, matched indicators, extracted URLs, and model/scoring versions.
+
+### Scoring
+
+- Score: model phishing probability multiplied by 100, rounded to one decimal place.
+- Low risk / Legitimate: probability below 0.35.
+- Medium risk / Suspicious: probability from 0.35 to below 0.70.
+- High risk / Phishing: probability of at least 0.70.
+
+Decisions use unrounded probabilities. Rules do not add score bonuses. Confidence describes the binary model, not a separately trained Suspicious class. Scores and indicator matches do not verify sender identity or live website reputation.
+
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest ML/tests/ -v
 ```
+
+## Data and model tools
+
+Source datasets and generated reports are local files excluded from Git. Supply the dataset before running preprocessing, training, evaluation, or the scanner audit.
+
+| Script under `ML/src/` | Purpose |
+| --- | --- |
+| `data/inspect_data.py` | Inspect the input dataset |
+| `data/preprocess.py` | Clean, deduplicate, and split data |
+| `training/compare_models.py` | Compare candidate classifiers |
+| `training/train.py` | Train and replace model artifacts |
+| `training/evaluate.py` | Evaluate binary classifier predictions |
+| `training/audit_scanner.py` | Compare scoring policies, inspect label/template issues, and run synthetic language probes |
+
+Run a script with the project interpreter, for example:
+
+```powershell
+.\.venv\Scripts\python.exe ML/src/training/audit_scanner.py
+```
+
+The audit writes to `ML/reports/scanner_audit/` and requires local `ML/data/processed/train.csv` and `test.csv`. It preserves model artifacts and original labels. Its synthetic Filipino/Taglish examples are development probes, not evidence of real-world language accuracy.
+
+## Layout
+
+- `models/`: trained classifier, vectorizer, and metadata.
+- `src/api/`: FastAPI endpoints and request/response schemas.
+- `src/inference/`: prediction and scoring logic.
+- `src/features/`: text, URL, and indicator features.
+- `src/data/` and `src/training/`: dataset and model tools.
+- `tests/`: automated tests and synthetic fixtures.
+- `data/` and `reports/`: local datasets and generated outputs.
