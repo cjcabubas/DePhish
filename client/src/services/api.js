@@ -1,14 +1,15 @@
 import { api as mockApi } from './mockApi.js';
+import { authApi } from './authApi.js';
 
-const baseUrl = (import.meta.env?.VITE_ML_API_URL || '').replace(/\/$/, '');
+const baseUrl = (import.meta.env?.VITE_SCAN_API_URL || '').replace(/\/$/, '');
 const scans = [];
 
 export async function analyzeMessage(text, type = 'email') {
   if (!text.trim()) throw new Error('Paste a message before scanning.');
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), 50000);
   try {
-    const response = await fetch(`${baseUrl}/api/analyze`, {
+    const response = await fetch(`${baseUrl}/api/scans/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, type }),
@@ -17,7 +18,7 @@ export async function analyzeMessage(text, type = 'email') {
     if (!response.ok) {
       if ([502, 504].includes(response.status)) throw new Error('Cannot reach the scanning service. Please check that it is running and try again.');
       throw new Error(response.status === 503
-        ? 'The scanning model is unavailable. Please try again later.'
+        ? 'The scanning service is unavailable. Please try again later.'
         : `Scanning failed (${response.status}). Please try again.`);
     }
     const result = await response.json();
@@ -43,8 +44,9 @@ export async function analyzeMessage(text, type = 'email') {
   }
 }
 
-// Authentication and community reports still use the existing demo service.
+// Community reports remain demo data until their backend is implemented.
 export const api = {
-  ...mockApi,
-  scans: { analyze: analyzeMessage, list: async () => [...scans], get: async id => scans.find(scan => scan.id === id) },
+  reports: mockApi.reports,
+  auth: authApi,
+  scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: async () => [...scans], get: async id => scans.find(scan => scan.id === id) },
 };

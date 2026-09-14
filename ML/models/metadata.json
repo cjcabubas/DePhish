@@ -1,43 +1,239 @@
 {
   "model_name": "DePhish-Classifier",
-  "model_type": "CalibratedLinearSVC",
-  "version": "1.0.0",
-  "trained_at": "2026-09-10T08:40:41.128172+00:00",
-  "num_training_samples": 18137,
-  "vocab_size": 15000,
-  "num_dense_features": 19,
-  "total_features": 15019,
-  "dense_features": [
-    "url_count",
-    "has_url",
-    "has_ip_url",
-    "has_at_symbol",
-    "has_shortener",
-    "suspicious_tld_count",
-    "max_url_length",
-    "excessive_subdomains",
-    "ind_urgency",
-    "ind_credentials",
-    "ind_financial",
-    "ind_impersonation",
-    "ind_cta",
-    "ind_structural",
-    "ind_total_matches",
-    "ind_high_severity",
-    "ind_upper_ratio",
-    "ind_exclamation_count",
-    "ind_currency_count"
-  ],
-  "hyperparameters": {
-    "C": 2.0,
-    "max_features": 15000,
-    "calibration_cv": 5
+  "model_type": "CalibratedWordCharLinearSVC",
+  "version": "2.0.0",
+  "pipeline_file": "phishing_pipeline_v2.pkl",
+  "trained_at": "2026-09-14T13:38:50.961111+00:00",
+  "artifact_sha256": "b2fc124dedcd51cdbef792c91351a8cf7f179a99ab8626c0bab20c5f86d8c8fb",
+  "training": {
+    "rows": 17885,
+    "conflicting_groups_excluded": 0,
+    "folds": 3,
+    "seconds": 328.9,
+    "train_sha256": "52a1075e9354529c412c88be12a7128caa18ff4ec55012c0876efc879b082a56",
+    "test_sha256": "5a38894485465690e9e220c6a4dced39513c676c9c172faaf397a204864f26ad"
   },
-  "training_metrics": {
-    "accuracy": 0.9995,
-    "precision": 1.0,
-    "recall": 0.9984,
-    "f1": 0.9992,
-    "roc_auc": 1.0
-  }
+  "evaluation_metrics": {
+    "baseline": {
+      "binary": {
+        "precision": 0.9786324786324786,
+        "recall": 0.9568245125348189,
+        "f1": 0.967605633802817,
+        "false_positives": 30,
+        "missed": 62
+      },
+      "warning": {
+        "precision": 0.9556313993174061,
+        "recall": 0.9749303621169917,
+        "f1": 0.9651844191658049,
+        "false_positives": 65,
+        "missed": 36
+      },
+      "high": {
+        "precision": 0.9925205684367988,
+        "recall": 0.9240947075208914,
+        "f1": 0.9570861882437793,
+        "false_positives": 10,
+        "missed": 109
+      },
+      "brier": 0.01719239551265952
+    },
+    "candidate": {
+      "binary": {
+        "precision": 0.9852631578947368,
+        "recall": 0.9777158774373259,
+        "f1": 0.9814750087382035,
+        "false_positives": 21,
+        "missed": 32
+      },
+      "warning": {
+        "precision": 0.9778546712802768,
+        "recall": 0.983983286908078,
+        "f1": 0.9809094064560916,
+        "false_positives": 32,
+        "missed": 23
+      },
+      "high": {
+        "precision": 0.9927797833935018,
+        "recall": 0.9575208913649025,
+        "f1": 0.9748316199929103,
+        "false_positives": 10,
+        "missed": 61
+      },
+      "brier": 0.009895540328533585
+    },
+    "no_train_template_overlap": {
+      "samples": 4423,
+      "baseline": {
+        "binary": {
+          "precision": 0.978134110787172,
+          "recall": 0.9565217391304348,
+          "f1": 0.9672072072072072,
+          "false_positives": 30,
+          "missed": 61
+        },
+        "warning": {
+          "precision": 0.9546406140963015,
+          "recall": 0.9750534568781183,
+          "f1": 0.9647390691114246,
+          "false_positives": 65,
+          "missed": 35
+        },
+        "high": {
+          "precision": 0.9923371647509579,
+          "recall": 0.9230220955096222,
+          "f1": 0.9564254062038404,
+          "false_positives": 10,
+          "missed": 108
+        },
+        "brier": 0.01742350167610809
+      },
+      "candidate": {
+        "binary": {
+          "precision": 0.9849246231155779,
+          "recall": 0.977904490377762,
+          "f1": 0.9814020028612304,
+          "false_positives": 21,
+          "missed": 31
+        },
+        "warning": {
+          "precision": 0.9773531493276716,
+          "recall": 0.9843193157519601,
+          "f1": 0.9808238636363636,
+          "false_positives": 32,
+          "missed": 22
+        },
+        "high": {
+          "precision": 0.9926090169992609,
+          "recall": 0.9572344975053457,
+          "f1": 0.974600870827286,
+          "false_positives": 10,
+          "missed": 60
+        },
+        "brier": 0.00993311526632753
+      }
+    },
+    "by_type": {
+      "sms": {
+        "baseline": {
+          "binary": {
+            "precision": 0.8796992481203008,
+            "recall": 0.9140625,
+            "f1": 0.896551724137931,
+            "false_positives": 16,
+            "missed": 11
+          },
+          "warning": {
+            "precision": 0.7806451612903226,
+            "recall": 0.9453125,
+            "f1": 0.8551236749116607,
+            "false_positives": 34,
+            "missed": 7
+          },
+          "high": {
+            "precision": 0.957983193277311,
+            "recall": 0.890625,
+            "f1": 0.9230769230769231,
+            "false_positives": 5,
+            "missed": 14
+          },
+          "brier": 0.021718724203015377
+        },
+        "candidate": {
+          "binary": {
+            "precision": 0.9603174603174603,
+            "recall": 0.9453125,
+            "f1": 0.952755905511811,
+            "false_positives": 5,
+            "missed": 7
+          },
+          "warning": {
+            "precision": 0.924812030075188,
+            "recall": 0.9609375,
+            "f1": 0.9425287356321839,
+            "false_positives": 10,
+            "missed": 5
+          },
+          "high": {
+            "precision": 0.9830508474576272,
+            "recall": 0.90625,
+            "f1": 0.943089430894309,
+            "false_positives": 2,
+            "missed": 12
+          },
+          "brier": 0.01061005926513615
+        }
+      },
+      "email": {
+        "baseline": {
+          "binary": {
+            "precision": 0.988985051140834,
+            "recall": 0.9610091743119266,
+            "f1": 0.9747964327258627,
+            "false_positives": 14,
+            "missed": 51
+          },
+          "warning": {
+            "precision": 0.9763358778625955,
+            "recall": 0.97782874617737,
+            "f1": 0.9770817417876242,
+            "false_positives": 31,
+            "missed": 29
+          },
+          "high": {
+            "precision": 0.9958949096880131,
+            "recall": 0.9273700305810397,
+            "f1": 0.9604117181314331,
+            "false_positives": 5,
+            "missed": 95
+          },
+          "brier": 0.015860590467066803
+        },
+        "candidate": {
+          "binary": {
+            "precision": 0.9876828329484219,
+            "recall": 0.9808868501529052,
+            "f1": 0.9842731108553894,
+            "false_positives": 16,
+            "missed": 25
+          },
+          "warning": {
+            "precision": 0.9832317073170732,
+            "recall": 0.9862385321100917,
+            "f1": 0.9847328244274809,
+            "false_positives": 22,
+            "missed": 18
+          },
+          "high": {
+            "precision": 0.9936858721389108,
+            "recall": 0.9625382262996942,
+            "f1": 0.9778640776699029,
+            "false_positives": 8,
+            "missed": 49
+          },
+          "brier": 0.009685303735029805
+        }
+      }
+    },
+    "promotion_gate_passed": true,
+    "training": {
+      "rows": 17885,
+      "conflicting_groups_excluded": 0,
+      "folds": 3,
+      "seconds": 328.9,
+      "train_sha256": "52a1075e9354529c412c88be12a7128caa18ff4ec55012c0876efc879b082a56",
+      "test_sha256": "5a38894485465690e9e220c6a4dced39513c676c9c172faaf397a204864f26ad"
+    },
+    "limitations": [
+      "Existing historical labels may mix spam and phishing.",
+      "No language accuracy claim; local fixtures are synthetic development probes.",
+      "Test set used once for candidate comparison, not threshold or hyperparameter tuning."
+    ]
+  },
+  "limitations": [
+    "Existing historical labels may mix spam and phishing.",
+    "No language accuracy claim; local fixtures are synthetic development probes.",
+    "Test set used once for candidate comparison, not threshold or hyperparameter tuning.",
+    "On the 12 synthetic local-language probes, warning detection fell from 4/6 to 2/6 scam examples, while benign false alarms fell from 1/6 to 0/6. Filipino/Taglish support is not established."
+  ]
 }

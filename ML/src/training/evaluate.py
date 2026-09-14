@@ -29,7 +29,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from src.features.text_features import CombinedFeaturePipeline
+from src.inference.predict import PhishingDetector
 
 
 def evaluate_model(
@@ -51,16 +51,13 @@ def evaluate_model(
 
     print("Loading test data and trained artifacts...")
     test_df = pd.read_csv(test_path).dropna(subset=["text"])
-    model = joblib.load(model_file)
-    vectorizer = joblib.load(vec_file)
-
-    pipeline = CombinedFeaturePipeline(vectorizer=vectorizer)
-    print(f"Transforming {len(test_df):,} test samples...")
-    X_test = pipeline.transform(test_df["text"].tolist())
+    detector = PhishingDetector(models_dir)
     y_test = test_df["check"].values
-
-    preds = model.predict(X_test)
-    probs = model.predict_proba(X_test)[:, 1]
+    probabilities = []
+    for start in range(0, len(test_df), 128):
+        probabilities.extend(detector.predict_probabilities(test_df["text"].iloc[start:start+128].tolist())[:, 1])
+    probs = np.asarray(probabilities)
+    preds = (probs >= 0.5).astype(int)
 
     acc = accuracy_score(y_test, preds)
     prec = precision_score(y_test, preds, zero_division=0)
@@ -90,6 +87,7 @@ def evaluate_model(
     metrics_path = reports_dir / "metrics.json"
 
     metrics_payload = {
+        "model_version": detector.metadata.get("version"),
         "test_samples": int(len(test_df)),
         "accuracy": round(float(acc), 4),
         "precision": round(float(prec), 4),

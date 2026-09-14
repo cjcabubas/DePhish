@@ -1,0 +1,43 @@
+{
+  "model_name": "DePhish-Classifier",
+  "model_type": "CalibratedLinearSVC",
+  "version": "1.0.0",
+  "trained_at": "2026-09-10T08:40:41.128172+00:00",
+  "num_training_samples": 18137,
+  "vocab_size": 15000,
+  "num_dense_features": 19,
+  "total_features": 15019,
+  "dense_features": [
+    "url_count",
+    "has_url",
+    "has_ip_url",
+    "has_at_symbol",
+    "has_shortener",
+    "suspicious_tld_count",
+    "max_url_length",
+    "excessive_subdomains",
+    "ind_urgency",
+    "ind_credentials",
+    "ind_financial",
+    "ind_impersonation",
+    "ind_cta",
+    "ind_structural",
+    "ind_total_matches",
+    "ind_high_severity",
+    "ind_upper_ratio",
+    "ind_exclamation_count",
+    "ind_currency_count"
+  ],
+  "hyperparameters": {
+    "C": 2.0,
+    "max_features": 15000,
+    "calibration_cv": 5
+  },
+  "training_metrics": {
+    "accuracy": 0.9995,
+    "precision": 1.0,
+    "recall": 0.9984,
+    "f1": 0.9992,
+    "roc_auc": 1.0
+  }
+}

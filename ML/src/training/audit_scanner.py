@@ -44,7 +44,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     train_path, test_path = [BASE / 'data' / 'processed' / f'{split}.csv' for split in ['train','test']]
     train, test = [pd.read_csv(p).dropna(subset=['text']) for p in [train_path,test_path]]
-    detector = PhishingDetector()
+    detector = PhishingDetector(use_legacy=True)
     probabilities, old_scores = [], []
     names = detector.pipeline.dense_feature_names
     for start in range(0, len(test), 128):
