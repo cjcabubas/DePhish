@@ -116,6 +116,7 @@ class AnalyzeResponse(BaseModel):
     message_type: str
     model_version: str
     scoring_version: str
+    model_limitations: List[str] = Field(default_factory=list)
 
 
 class BatchAnalyzeRequest(BaseModel):
@@ -151,8 +152,8 @@ def model_info():
     """Returns model metadata, hyperparameter configuration, and test metrics if available."""
     det = get_detector()
     reports_file = BASE_DIR / "reports" / "metrics.json"
-    metrics = {}
-    if reports_file.exists():
+    metrics = det.metadata.get("evaluation_metrics", {})
+    if reports_file.exists() and not metrics:
         with reports_file.open("r", encoding="utf-8") as f:
             metrics = json.load(f)
 

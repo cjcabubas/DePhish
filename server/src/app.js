@@ -1,5 +1,7 @@
 import express from 'express';
+import { scanRoutes } from './routes/scanRoutes.js';
 import helmet from 'helmet';
+import { linkRoutes } from './routes/linkRoutes.js';
 import session from 'express-session';
 import { createAuthService } from './services/authService.js';
 import { createAuthController } from './controllers/authController.js';
@@ -11,6 +13,8 @@ export function createApp({ config, users, store, isReady = () => true, authLimi
   app.use(helmet());
   app.use(express.json({ limit: '16kb' }));
   app.get('/health', (req, res) => res.status(isReady() ? 200 : 503).json({ service: 'DePhish-Auth', ready: isReady() }));
+  app.use('/api/links', linkRoutes);
+  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000'));
   app.use('/api/auth', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     if (!isReady() || !store) return res.status(503).json({ message: 'Accounts are not available yet. Please try again later.' });

@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
 export function readConfig(env = process.env) {
   const config = {
+    mlApiUrl: env.ML_API_URL || 'http://127.0.0.1:8000',
+    dbName: env.DB_NAME || undefined,
+    scanCollectionName: env.COLLECTION_NAME || 'scan_reports',
     port: Number(env.PORT || 5000), host: env.HOST || '127.0.0.1',
     production: env.NODE_ENV === 'production', mongoUri: env.MONGODB_URI || '',
     sessionSecret: env.SESSION_SECRET || '', trustProxy: env.TRUST_PROXY === '1',

@@ -1,84 +1,46 @@
-# DePhish ML Service
+# DePhish ML service
 
-FastAPI service for analyzing email and SMS text. It uses a calibrated Linear SVM with word TF-IDF features and rule-derived indicators. The React frontend is in `client/`; see the [project setup guide](../README.md).
+FastAPI message classifier using calibrated Linear SVM pipelines with word/character TF-IDF and structured features. The v2 artifact is included in `models/`.
 
-## Setup and run
+## Run
 
-Run these commands from the repository root. Create the environment only if `.venv` does not already exist:
+From the repository root, after creating `.venv`:
 
 ```powershell
-python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r ML/requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn ML.src.api.main:app --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python.exe -m uvicorn ML.src.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-The trained artifacts in `ML/models/` are included, so retraining is not required to run scans. Keep the scikit-learn version pinned in `requirements.txt` compatible with those artifacts.
+Keep the pinned scikit-learn version for artifact compatibility. Restart after changing model artifacts. See the [root guide](../README.md) for Express and frontend setup.
 
-Check service readiness at [localhost:8000/health](http://localhost:8000/health). Swagger UI (`/docs`) and ReDoc (`/redoc`) are currently disabled in `src/api/main.py`.
+## API
 
-## API endpoints
-
-| Method | Path | Purpose |
+| Method | Route | Purpose |
 | --- | --- | --- |
-| GET | `/health` | Service health and model readiness |
-| GET | `/api/model/info` | Model metadata and locally available evaluation metrics |
-| POST | `/api/analyze` | Analyze one message |
-| POST | `/api/predict` | Alias for `/api/analyze` |
-| POST | `/api/batch-predict` | Analyze up to 100 messages |
+| GET | `/health` | Model readiness |
+| GET | `/api/model/info` | Active model metadata |
+| POST | `/api/analyze` | Classify one message |
+| POST | `/api/predict` | Alias for analyze |
+| POST | `/api/batch-predict` | Classify up to 100 messages |
 
-Single-message requests accept nonblank `text` up to 5,000 characters and a `type` of `email`, `sms`, or `auto` (default).
+Single requests accept `text` (1–5,000 characters) and `type` (`email`, `sms`, or `auto`). Batch requests use a `messages` array. Swagger and ReDoc are disabled.
 
-```json
-{
-  "text": "Please review the meeting agenda for tomorrow.",
-  "type": "email"
-}
-```
+This service returns the message-model score, probabilities, pattern indicators, and extracted URLs. Express adds live link evidence through `/api/scans/analyze`, which is the frontend's scan endpoint.
 
-Batch requests wrap these objects in a `messages` array. Responses include classification, risk score and level, binary model confidence and probabilities, rule-derived scam category, matched indicators, extracted URLs, and model/scoring versions.
+The model score is phishing probability × 100. Cutoffs are 35 for Suspicious and 70 for Phishing, evaluated using unrounded probability. Confidence refers to the binary classifier; Suspicious is a threshold range, not a trained third class.
 
-### Scoring
+## Evaluation and training
 
-- Score: model phishing probability multiplied by 100, rounded to one decimal place.
-- Low risk / Legitimate: probability below 0.35.
-- Medium risk / Suspicious: probability from 0.35 to below 0.70.
-- High risk / Phishing: probability of at least 0.70.
+V2 improved existing test-set binary F1 from 96.76% to 98.15%. This is not an independent field benchmark. Filipino/Taglish detection remains unvalidated and regressed on several development probes.
 
-Decisions use unrounded probabilities. Rules do not add score bonuses. Confidence describes the binary model, not a separately trained Suspicious class. Scores and indicator matches do not verify sender identity or live website reputation.
+See [model comparison, rollback, and link scoring](MODEL_UPGRADE.md) for details. Local datasets and generated reports are excluded from Git.
+
+- `src/training/upgrade_model.py`: generate a v2 candidate and comparison without replacing the active artifact.
+- `src/training/evaluate.py`: evaluate the active model.
+- `src/training/audit_scanner.py`: preserve the legacy v1 scoring audit.
 
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest ML/tests/ -v
+.\.venv\Scripts\python.exe -m pytest ML/tests -q
 ```
-
-## Data and model tools
-
-Source datasets and generated reports are local files excluded from Git. Supply the dataset before running preprocessing, training, evaluation, or the scanner audit.
-
-| Script under `ML/src/` | Purpose |
-| --- | --- |
-| `data/inspect_data.py` | Inspect the input dataset |
-| `data/preprocess.py` | Clean, deduplicate, and split data |
-| `training/compare_models.py` | Compare candidate classifiers |
-| `training/train.py` | Train and replace model artifacts |
-| `training/evaluate.py` | Evaluate binary classifier predictions |
-| `training/audit_scanner.py` | Compare scoring policies, inspect label/template issues, and run synthetic language probes |
-
-Run a script with the project interpreter, for example:
-
-```powershell
-.\.venv\Scripts\python.exe ML/src/training/audit_scanner.py
-```
-
-The audit writes to `ML/reports/scanner_audit/` and requires local `ML/data/processed/train.csv` and `test.csv`. It preserves model artifacts and original labels. Its synthetic Filipino/Taglish examples are development probes, not evidence of real-world language accuracy.
-
-## Layout
-
-- `models/`: trained classifier, vectorizer, and metadata.
-- `src/api/`: FastAPI endpoints and request/response schemas.
-- `src/inference/`: prediction and scoring logic.
-- `src/features/`: text, URL, and indicator features.
-- `src/data/` and `src/training/`: dataset and model tools.
-- `tests/`: automated tests and synthetic fixtures.
-- `data/` and `reports/`: local datasets and generated outputs.

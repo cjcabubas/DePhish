@@ -1,6 +1,12 @@
-# Running the connected scanner
+# DePhish
 
-Start the ML API from the repository root using Python 3.11+:
+Email and SMS phishing scanner with message classification, automatic link checks, and MongoDB-backed accounts.
+
+## Run locally
+
+Requirements: Node.js 22.12+ and Python 3.11+. Run each service in a separate terminal from the repository root.
+
+**1. ML service**
 
 ```powershell
 python -m venv .venv
@@ -8,7 +14,19 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m uvicorn ML.src.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-In a second terminal:
+The trained model is included; retraining is not required.
+
+**2. Express server**
+
+```powershell
+cd server
+npm ci
+npm start
+```
+
+For accounts, copy `server/.env.example` to `server/.env` on a fresh checkout and configure Atlas and a session secret. Do not overwrite an existing `.env`. Scanning works without Atlas.
+
+**3. Frontend**
 
 ```powershell
 cd client
@@ -16,18 +34,23 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite. Email and SMS scans POST `{ text, type }` to
-`/api/analyze`; Vite forwards requests to `http://127.0.0.1:8000`.
-The checked-in model artifacts are used without retraining.
+Open the URL printed by Vite. Keep all three services running. Restart Express after configuration changes, ML after model changes, and Vite after proxy changes.
 
-Copy `client/.env.example` to `client/.env` to change the proxy target. For a
-production build, configure a same-origin `/api` reverse proxy to the ML service,
-or set `VITE_ML_API_URL` to its reachable origin before running `npm run build`.
-`npm run preview` also uses the configured local proxy.
+## What works
 
-Scores, classifications, indicators, and URLs come from the ML service. Failures
-are shown in the scanner with a retry available; no demo score is substituted.
-Scan history contains scans from the current page session and resets on refresh.
-Authentication uses the Atlas-ready Express server; see [server setup](server/README.md). Accounts remain unavailable until Atlas is configured. Reports and admin statistics remain demo features.
+- Email/SMS scanning, including a URL pasted into the message field.
+- Automatic domain registration, age, redirect, and TLS checks for up to three unique links.
+- Combined message and link risk score with explanations.
+- Signup, login/logout, and MongoDB sessions when Atlas is configured.
+- Scan history for the current page session only.
 
-For login/signup, run `npm ci` and `npm run dev` from `server/` in a third terminal. Restart Vite to load the authentication proxy.
+Reports/admin statistics remain demo content; learning modules and persistent scan storage are not implemented. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
+
+## Project guides
+
+- [Frontend](client/README.md)
+- [Express and Atlas setup](server/README.md)
+- [ML service](ML/README.md)
+- [Model evaluation and link-risk policy](ML/MODEL_UPGRADE.md)
+
+Local `.env` files, datasets, dependencies, and generated reports are excluded from Git. Committed environment templates contain no secrets.

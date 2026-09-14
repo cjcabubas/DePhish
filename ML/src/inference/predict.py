@@ -40,7 +40,8 @@ class PhishingDetector:
     heuristic and lexical indicator explanations.
     """
 
-    def __init__(self, models_dir: Optional[Path] = None):
+    def __init__(self, models_dir: Optional[Path] = None, use_legacy: bool = False):
+        self.use_legacy = use_legacy
         self.models_dir = models_dir or (BASE_DIR / "models")
         self.model_path = self.models_dir / "phishing_model.pkl"
         self.vec_path = self.models_dir / "tfidf_vectorizer.pkl"
@@ -54,19 +55,24 @@ class PhishingDetector:
         self._load_artifacts()
 
     def _load_artifacts(self):
+        metadata_path = self.models_dir / "metadata-v1.json" if self.use_legacy and (self.models_dir / "metadata-v1.json").exists() else self.meta_path
+        if metadata_path.exists():
+            self.metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        artifact = self.metadata.get("pipeline_file") if not self.use_legacy else None
+        if artifact:
+            self.model_path = self.models_dir / artifact
+            self.model = joblib.load(self.model_path)
+            self.pipeline = None  # Serialized estimator owns all feature transforms.
+            return
         if not self.model_path.exists() or not self.vec_path.exists():
-            raise FileNotFoundError(
-                f"Model artifacts not found in {self.models_dir}. "
-                "Please run 'python ML/src/training/train.py' first."
-            )
-
+            raise FileNotFoundError(f"Model artifacts not found in {self.models_dir}.")
         self.model = joblib.load(self.model_path)
         self.vectorizer = joblib.load(self.vec_path)
         self.pipeline = CombinedFeaturePipeline(vectorizer=self.vectorizer)
 
-        if self.meta_path.exists():
-            with self.meta_path.open("r", encoding="utf-8") as f:
-                self.metadata = json.load(f)
+    def predict_probabilities(self, texts):
+        inputs = self.pipeline.transform(texts) if self.pipeline is not None else texts
+        return self.model.predict_proba(inputs)
 
     def analyze(self, text: str, message_type: str = "auto") -> Dict[str, Any]:
         """
@@ -88,8 +94,7 @@ class PhishingDetector:
             raise ValueError("Message must contain non-whitespace text.")
 
         # 1. Feature extraction & model prediction
-        X = self.pipeline.transform([text])
-        phishing_prob = float(self.model.predict_proba(X)[0, 1])
+        phishing_prob = float(self.predict_probabilities([text])[0, 1])
         legit_prob = float(1.0 - phishing_prob)
 
         # 2. Heuristics & Explainability
@@ -120,6 +125,7 @@ class PhishingDetector:
             "message_type": detected_type,
             "model_version": self.metadata.get("version", "1.0.0"),
             "scoring_version": "2.0.0",
+            "model_limitations": self.metadata.get("limitations", []),
         }
 
     def batch_analyze(self, texts: List[str], message_type: str = "auto") -> List[Dict[str, Any]]:

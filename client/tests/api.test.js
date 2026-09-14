@@ -7,7 +7,7 @@ test('scan request, history, and service errors', async () => {
   const result = { prediction: 'Legitimate', risk_score: 12.3, risk_level: 'Low Risk', message_type: 'sms', detected_indicators: [], detected_urls: [] };
   try {
     globalThis.fetch = async (url, options) => {
-      assert.equal(url, '/api/analyze');
+      assert.equal(url, '/api/scans/analyze');
       assert.equal(options.method, 'POST');
       assert.deepEqual(JSON.parse(options.body), { text: 'See you at lunch', type: 'sms' });
       return { ok: true, json: async () => result };
@@ -20,7 +20,7 @@ test('scan request, history, and service errors', async () => {
     assert.equal(scans[0].status, 'Low risk');
     await assert.rejects(api.scans.analyze('  '), /Paste a message/);
     globalThis.fetch = async () => ({ ok: false, status: 503 });
-    await assert.rejects(api.scans.analyze('test'), /model is unavailable/);
+    await assert.rejects(api.scans.analyze('test'), /service is unavailable/);
     globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
     await assert.rejects(api.scans.analyze('test'), /Cannot reach/);
     globalThis.fetch = async () => { throw new DOMException('Aborted', 'AbortError'); };

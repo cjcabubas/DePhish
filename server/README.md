@@ -1,72 +1,61 @@
-# DePhish authentication server
+# DePhish server
 
-Express/Mongoose MVC template for MongoDB Atlas. React in `client/` is the view layer. The Python ML service remains separate.
+Express/Mongoose MVC backend for accounts and combined phishing scans. React is the view layer; the Python service handles message classification.
 
-## Run before configuring Atlas
-
-From `server/`:
+## Run
 
 ```powershell
 npm ci
-npm run dev
+npm start
 ```
 
-With no MongoDB URI or session secret, the server starts on `127.0.0.1:5000` and returns HTTP 503 for account requests. The frontend displays an unavailable message; no users are simulated or saved. ML scanning continues through its existing proxy.
+The default address is `http://127.0.0.1:5000`. Use `npm run dev` for automatic restarts during development. The ML service must also run on port 8000 for scans.
 
-## Configure Atlas
+## Configure MongoDB Atlas
 
-1. Create an Atlas cluster and a database user with access to the application's database. Allow the server's IP in Atlas network access.
-2. Open `server/.env`. If it does not exist on a fresh checkout, copy `server/.env.example` to `server/.env`. Each sensitive setting has a comment explaining what belongs there; its value is deliberately blank.
-3. Set `MONGODB_URI` to your Atlas driver connection string, with the database name (for example `dephish`). URL-encode special characters in the database user's password. This is the Atlas database credential, not an application user's password.
-4. Generate a session secret and set `SESSION_SECRET`:
+1. Copy `.env.example` to `.env` if no local file exists.
+2. Set `MONGODB_URI` to the Atlas driver connection string. The project owner must allow the server's public IP in Atlas Network Access and grant the database user appropriate access.
+3. Set `SESSION_SECRET` to a private random value of at least 32 characters. Generate one locally with:
 
 ```powershell
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-5. Restart the server. `GET http://127.0.0.1:5000/health` should return HTTP 200 with `ready: true`.
-6. Run `npm run dev` in `client/`. Restart Vite if it was running before its proxy configuration changed.
+4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` is reserved for future scan persistence; it does not enable storage or rename the users collection.
+5. Restart Express. `/health` returns HTTP 200 with `ready: true` when accounts are available.
 
-The database connection and secret stay in `server/.env`, which Git ignores. The server resolves this file relative to its configuration module, independent of the terminal working directory. Keep all sensitive settings blank in committed templates; add actual values only to the local environment file or your deployment secret settings. Never use a `VITE_` variable for either value. Users and sessions are stored in MongoDB; a unique email index is initialized before signup requests are accepted.
+Users and sessions use the `users` and `sessions` collections. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
-## Architecture
+If Atlas is missing or fails at startup, account routes return 503 while scanning stays available. Resolve the connection issue and restart to enable accounts.
 
-- `src/models/User.js`: Mongoose user schema and database queries.
-- `src/services/authService.js`: password hashing and credential checks.
-- `src/controllers/authController.js`: account actions and session lifecycle.
-- `src/routes/authRoutes.js`: endpoints and attempt limits.
-- `src/middleware/`: request validation, authentication, and role guard.
-- `src/config/env.js`: environment loading and validation.
-- `src/app.js`: HTTP/session/security middleware.
-- `src/server.js`: database connection and server startup.
-- `../client/src/main.jsx`: existing form design connected to real endpoints.
+## Routes
 
-## Endpoints
-
-| Method | Path | Purpose |
+| Method | Route | Purpose |
 | --- | --- | --- |
-| POST | `/api/auth/signup` | Create a regular user and start a session |
-| POST | `/api/auth/login` | Verify credentials and rotate the session |
-| GET | `/api/auth/me` | Return the authenticated user's public fields |
-| POST | `/api/auth/logout` | Destroy the server session and clear its cookie |
-| GET | `/health` | Report authentication service readiness |
+| POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
+| POST | `/api/links/check` | Inspect one public URL |
+| POST | `/api/auth/signup` | Register and start a session |
+| POST | `/api/auth/login` | Log in and rotate the session |
+| GET | `/api/auth/me` | Return the current user |
+| POST | `/api/auth/logout` | Destroy the session |
+| GET | `/health` | Account readiness |
 
-Signup JSON: `{ "name": "Your name", "email": "you@example.com", "password": "your-long-password" }`. Login requires email and password. POST requests require JSON and `X-DePhish-Client: web`; browser origins must match `CLIENT_ORIGINS`. The frontend sends these automatically and includes cookies. Responses never include passwords or password hashes.
+Scans accept `{ "text": "message or URL", "type": "email" }`; type can also be `sms` or `auto`. `ML_API_URL` selects the upstream ML service. Link checks require outbound DNS/HTTPS access but no Atlas or API key. See the [risk policy](../ML/MODEL_UPGRADE.md).
 
-Passwords require at least 12 characters on signup and no more than 72 UTF-8 bytes (bcrypt's input limit). Public signup always sets role `user`, including for addresses beginning with `admin@`. To provision an administrator, first register and then assign the role through a trusted database administration process. Never accept a role from the signup form. Apply `requireAuth` followed by `requireRole('admin')` when adding admin API routes.
+Account POST requests require JSON and `X-DePhish-Client: web`; the frontend supplies both. Passwords require at least 12 characters and at most 72 UTF-8 bytes. Signup always creates a regular user. Admin roles must be assigned through trusted administration.
 
-## Sessions and deployment
+## Structure and deployment
 
-Session IDs use HttpOnly, SameSite=Lax cookies; session data lives in MongoDB, with a seven-day lifetime. Production cookies require HTTPS. Set `NODE_ENV=production` and exact HTTPS `CLIENT_ORIGINS`; proxy `/api/auth` to Express on the same frontend origin. Set `TRUST_PROXY=1` only behind one trusted proxy. Bind `HOST` as needed for your hosting platform.
+`src/models` defines database access, `src/services` contains business logic, `src/controllers` handles requests, and `src/routes` declares endpoints. Configuration and middleware remain separate.
 
-Vite routes `/api/auth` to port 5000 and other `/api` requests to the ML service on port 8000. `AUTH_API_PROXY_TARGET` changes the local authentication target. This template intentionally uses a same-origin proxy rather than cross-site cookie/CORS configuration.
+Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requires HTTPS, `NODE_ENV=production`, exact `CLIENT_ORIGINS`, and a same-origin proxy for Express routes. Set `TRUST_PROXY=1` only behind one trusted proxy. Multiple server instances need shared rate limits.
 
-Account attempts are limited per IP in process memory. A multi-instance deployment needs a shared rate-limit store. Email verification, password reset, account deletion, persistent scan history, reporting, and admin APIs are not implemented by this template. Existing report/admin data remains demo content. Scan history stays in page memory and is cleared on successful login/signup/logout.
+Email verification, password reset, persistent scan history, and report/admin APIs are not implemented.
 
-## Verification
+## Tests
 
 ```powershell
 npm test
 ```
 
-Automated tests use an isolated in-memory user repository and session store to exercise HTTP contracts, hashing, session rotation/revocation, validation, origin protection, rate limits, and role guards. These substitutes are test-only: the running configured server uses Mongoose and connect-mongo. A real Atlas connection, index creation, and persistence across server restarts still need verification after configuration. Invalid Atlas connection settings fail startup without printing secrets.
+Tests cover account contracts, session handling, validation, link safety, and combined risk decisions. Account tests use isolated in-memory substitutes; they do not create Atlas users.

@@ -7,14 +7,14 @@ const config = readConfig();
 let store;
 if (config.mongoUri && config.sessionSecret) {
   try {
-    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000 });
+    await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000, dbName: config.dbName });
     await User.init(); // Establish the unique email index before accepting signup.
     store = MongoStore.create({ clientPromise: Promise.resolve(mongoose.connection.getClient()), collectionName: 'sessions', ttl: 7 * 24 * 60 * 60 });
     store.on('error', () => console.error('Session storage error. Check database connectivity.'));
   } catch {
-    console.error('Database setup failed. Check Atlas connection, access rules, and database permissions.');
+    console.error('Accounts unavailable: database setup failed. Check Atlas connection and access rules. Scanning remains available.');
     await mongoose.disconnect();
-    process.exit(1);
+    store = undefined;
   }
 } else {
   console.log('Accounts are unconfigured. Set MONGODB_URI and SESSION_SECRET in server/.env, then restart.');
