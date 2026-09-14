@@ -22,11 +22,18 @@ def detector():
     pytest.skip("Model artifacts not yet generated. Run training first.")
 
 
-def test_empty_message_is_safe(detector):
-    res = detector.analyze("")
-    assert res["prediction"] == "Legitimate"
-    assert res["risk_score"] == 0.0
-    assert res["risk_level"] == "Low Risk"
+def test_empty_message_rejected(detector):
+    with pytest.raises(ValueError):
+        detector.analyze("  ")
+
+
+def test_score_is_unboosted_model_estimate():
+    from src.inference.predict import score_prediction
+    for probability, label in [(0.349, "Legitimate"), (.35, "Suspicious"), (.699, "Suspicious"), (.70, "Phishing")]:
+        result = score_prediction(probability)
+        assert result["prediction"] == label
+        assert result["risk_score"] == round(probability * 100, 1)
+        assert result["confidence"] == round(max(probability, 1-probability), 4)
 
 
 def test_phishing_message_detected(detector):

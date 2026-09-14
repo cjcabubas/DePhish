@@ -6,11 +6,11 @@ Provides endpoints for health check, model metadata, single and batch message an
 import sys
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Ensure ML package is on sys.path
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -71,8 +71,16 @@ def get_detector() -> PhishingDetector:
 
 # Pydantic Schemas
 class AnalyzeRequest(BaseModel):
-    text: str = Field(..., min_length=1, description="Raw message or email text to scan")
-    type: Optional[str] = Field("auto", description="Type of message: 'email', 'sms', or 'auto'")
+    text: str = Field(..., min_length=1, max_length=5000, description="Raw message or email text to scan")
+    type: Literal["email", "sms", "auto"] = Field("auto", description="Type of message: 'email', 'sms', or 'auto'")
+
+
+    @field_validator("text")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("Message must contain non-whitespace text.")
+        return value
 
 
 class IndicatorItem(BaseModel):
@@ -107,10 +115,11 @@ class AnalyzeResponse(BaseModel):
     detected_urls: List[UrlAnalysisItem]
     message_type: str
     model_version: str
+    scoring_version: str
 
 
 class BatchAnalyzeRequest(BaseModel):
-    messages: List[AnalyzeRequest] = Field(..., min_length=1, description="List of messages to scan")
+    messages: List[AnalyzeRequest] = Field(..., min_length=1, max_length=100, description="List of messages to scan")
 
 
 class BatchAnalyzeResponse(BaseModel):

@@ -22,6 +22,18 @@ from src.features.url_features import extract_urls, analyze_url
 from src.features.indicator_features import extract_indicators, classify_phishing_type
 
 
+def score_prediction(phishing_prob: float) -> Dict[str, Any]:
+    """Model estimate, not a guarantee. Thresholds retained, not tuned on test data."""
+    if not 0 <= phishing_prob <= 1:
+        raise ValueError("Probability must be between zero and one.")
+    prediction, level = ("Phishing", "High Risk") if phishing_prob >= .70 else (
+        ("Suspicious", "Medium Risk") if phishing_prob >= .35 else ("Legitimate", "Low Risk"))
+    return {"prediction": prediction, "risk_level": level,
+            "risk_score": round(phishing_prob * 100, 1),
+            # Confidence is binary model confidence, not a third-class probability.
+            "confidence": round(max(phishing_prob, 1 - phishing_prob), 4)}
+
+
 class PhishingDetector:
     """
     Production detector combining trained scikit-learn model with
@@ -73,17 +85,7 @@ class PhishingDetector:
             - message_type: 'email', 'sms', or detected
         """
         if not text or not text.strip():
-            return {
-                "prediction": "Legitimate",
-                "risk_score": 0.0,
-                "risk_level": "Low Risk",
-                "confidence": 1.0,
-                "probabilities": {"legitimate": 1.0, "phishing": 0.0},
-                "phishing_type": "None",
-                "detected_indicators": [],
-                "detected_urls": [],
-                "message_type": message_type,
-            }
+            raise ValueError("Message must contain non-whitespace text.")
 
         # 1. Feature extraction & model prediction
         X = self.pipeline.transform([text])
@@ -95,38 +97,8 @@ class PhishingDetector:
         raw_urls = extract_urls(text)
         analyzed_urls = [analyze_url(u) for u in raw_urls]
 
-        # Calculate high severity indicators count
-        high_sev = sum(1 for i in indicators if i.get("severity") == "high")
-        has_suspicious_url = any(
-            u["is_ip"] or u["has_at_symbol"] or u["is_suspicious_tld"] or u["is_shortener"]
-            for u in analyzed_urls
-        )
-
-        # 3. Calculate calibrated Risk Score (0-100)
-        base_score = phishing_prob * 100.0
-
-        # Adjust score slightly if hard heuristic violations exist
-        boost = 0.0
-        if high_sev > 0:
-            boost += min(15.0, high_sev * 5.0)
-        if has_suspicious_url:
-            boost += 10.0
-
-        risk_score = round(float(np.clip(base_score + boost, 0.0, 100.0)), 1)
-
-        # 4. Determine Classification & Risk Level
-        if risk_score >= 70.0:
-            risk_level = "High Risk"
-            prediction = "Phishing"
-            confidence = round(max(phishing_prob, 0.70), 4)
-        elif risk_score >= 35.0:
-            risk_level = "Medium Risk"
-            prediction = "Suspicious"
-            confidence = round(phishing_prob if phishing_prob > 0.5 else legit_prob, 4)
-        else:
-            risk_level = "Low Risk"
-            prediction = "Legitimate"
-            confidence = round(legit_prob, 4)
+        # Rules explain observed patterns; they do not inflate model probability.
+        decision = score_prediction(phishing_prob)
 
         # 5. Phishing type categorization
         phishing_type = classify_phishing_type(indicators, has_url=bool(analyzed_urls))
@@ -137,19 +109,17 @@ class PhishingDetector:
             detected_type = "sms" if len(text) <= 160 and ("\n" not in text) else "email"
 
         return {
-            "prediction": prediction,
-            "risk_score": risk_score,
-            "risk_level": risk_level,
-            "confidence": confidence,
+            **decision,
             "probabilities": {
                 "legitimate": round(legit_prob, 4),
                 "phishing": round(phishing_prob, 4),
             },
-            "phishing_type": phishing_type,
+            "phishing_type": phishing_type if decision["prediction"] != "Legitimate" else "Not established",
             "detected_indicators": indicators,
             "detected_urls": analyzed_urls,
             "message_type": detected_type,
             "model_version": self.metadata.get("version", "1.0.0"),
+            "scoring_version": "2.0.0",
         }
 
     def batch_analyze(self, texts: List[str], message_type: str = "auto") -> List[Dict[str, Any]]:

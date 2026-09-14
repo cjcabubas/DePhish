@@ -63,3 +63,8 @@ ML/data/raw/*
 !ML/data/raw/.gitkeep
 ML/data/processed/*
 !ML/data/processed/.gitkeep
+# Personal scratch folders (never publish)
+/[Cc][Jj][Ss][Hh][Ii][Tt]*/
+
+# Generated evaluation outputs; regenerate with the ML scripts
+/ML/reports/

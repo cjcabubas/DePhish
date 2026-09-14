@@ -87,3 +87,14 @@ if __name__ == "__main__":
     test_api_analyze_safe_message()
     test_api_batch_analyze()
     print("\nAll live API tests passed successfully!")
+
+
+def test_invalid_inputs_rejected():
+    for payload in [{"text": "   "}, {"text": "x" * 5001}, {"text": "hello", "type": "unknown"}]:
+        assert client.post("/api/analyze", json=payload).status_code == 422
+
+
+def test_score_matches_model_probability():
+    data = client.post("/api/analyze", json={"text": "Urgent: confirm your password at https://example.com", "type": "email"}).json()
+    assert abs(data["risk_score"] - data["probabilities"]["phishing"] * 100) <= .06
+    assert data["scoring_version"] == "2.0.0"
