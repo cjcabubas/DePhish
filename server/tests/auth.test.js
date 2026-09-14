@@ -43,7 +43,7 @@ test('signup, secure storage, login, rotation, restoration, and logout', async t
   const stored = records.get('1');
   assert.notEqual(stored.passwordHash, account.password);
   assert.equal(await bcrypt.compare(account.password, stored.passwordHash), true);
-  const firstHeader = response.headers.get('set-cookie');
+  const firstHeader = response.headers.getSetCookie().find(value => value.includes('Path=/api;'));
   assert.match(firstHeader, /HttpOnly/); assert.match(firstHeader, /SameSite=Lax/);
   let cookie = firstHeader.split(';')[0];
   assert.equal((await request('/api/auth/me', undefined, cookie)).status, 200);
@@ -54,7 +54,7 @@ test('signup, secure storage, login, rotation, restoration, and logout', async t
   assert.equal(bad.status, 401); assert.deepEqual(await bad.json(), await unknown.json());
   response = await request('/api/auth/login', account, cookie);
   assert.equal(response.status, 200);
-  const previous = cookie; cookie = response.headers.get('set-cookie').split(';')[0];
+  const previous = cookie; cookie = response.headers.getSetCookie().find(value => value.includes('Path=/api;')).split(';')[0];
   assert.notEqual(cookie, previous);
   assert.equal((await request('/api/auth/me', undefined, previous)).status, 401);
   records.get('1').role = 'admin';
@@ -94,4 +94,20 @@ test('role guard, user schema, and configuration validation', () => {
   assert.equal(User.schema.indexes().some(([keys, options]) => keys.email === 1 && options.unique), true);
   assert.throws(() => readConfig({ SESSION_SECRET: 'short' }), /SESSION_SECRET/);
   assert.throws(() => readConfig({ NODE_ENV: 'production' }), /HTTPS/);
+});
+
+test('scan history requires an account and scopes queries to its owner', async t => {
+  const seen = [];
+  const scans = { list: async (userId, limit) => { seen.push({userId, limit}); return [{_id:'scan1',title:'Meeting',createdAt:new Date(),result:{risk_score:25}}]; } };
+  const {request} = await setup(t, {scans});
+  assert.equal((await request('/api/scans')).status,401);
+  const signup = await request('/api/auth/signup',account);
+  const cookie = signup.headers.getSetCookie().find(value => value.includes('Path=/api;')).split(';')[0];
+  const response = await request('/api/scans?userId=someone-else&limit=5',undefined,cookie);
+  assert.equal(response.status,200);
+  assert.deepEqual(seen,[{userId:'1',limit:5}]);
+  for (const limit of ['0','101','-1','abc']) assert.equal((await request('/api/scans?limit='+limit,undefined,cookie)).status,400);
+  assert.equal((await request('/api/scans/analyze',{text:'hello'},cookie,{Origin:'https://untrusted.example'})).status,403);
+  await request('/api/auth/logout',{},cookie);
+  assert.equal((await request('/api/scans',undefined,cookie)).status,401);
 });

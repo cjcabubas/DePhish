@@ -42,9 +42,9 @@ Open the URL printed by Vite. Keep all three services running. Restart Express a
 - Automatic domain registration, age, redirect, and TLS checks for up to three unique links.
 - Combined message and link risk score with explanations.
 - Signup, login/logout, and MongoDB sessions when Atlas is configured.
-- Scan history for the current page session only.
+- Private persisted scan history for signed-in users; anonymous history lasts for the page session.
 
-Reports/admin statistics remain demo content; learning modules and persistent scan storage are not implemented. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
+Reports/admin statistics remain demo content; learning modules are not implemented. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
 
 ## Project guides
 

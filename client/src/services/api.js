@@ -11,7 +11,8 @@ export async function analyzeMessage(text, type = 'email') {
   try {
     const response = await fetch(`${baseUrl}/api/scans/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' },
+      credentials: 'same-origin',
       body: JSON.stringify({ text, type }),
       signal: controller.signal,
     });
@@ -44,9 +45,22 @@ export async function analyzeMessage(text, type = 'email') {
   }
 }
 
+async function listScans() {
+  const response = await fetch(`${baseUrl}/api/scans`, { credentials: 'same-origin' });
+  if (response.status === 401) return [...scans];
+  if (!response.ok) throw new Error('Scan history is unavailable. Please try again.');
+  const data = await response.json();
+  return data.scans.map(row => ({
+    id: row.id, title: row.title, date: new Date(row.created_at).toLocaleDateString(),
+    type: row.result.message_type === 'sms' ? 'SMS' : 'Email', score: row.result.risk_score,
+    status: row.result.prediction === 'Legitimate' ? 'Low risk' : 'Suspicious',
+    summary: `${row.result.prediction} · ${row.result.risk_level}`, result: row.result,
+  }));
+}
+
 // Community reports remain demo data until their backend is implemented.
 export const api = {
   reports: mockApi.reports,
   auth: authApi,
-  scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: async () => [...scans], get: async id => scans.find(scan => scan.id === id) },
+  scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: listScans, get: async id => (await listScans()).find(scan => scan.id === id) },
 };

@@ -3,6 +3,7 @@ const regenerate = req => new Promise((resolve, reject) => req.session.regenerat
 const save = req => new Promise((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
 export function createAuthController(service, cookieOptions) {
   async function establish(req, res, user, status = 200) {
+    res.clearCookie('dephish.sid', { path: '/api/auth', httpOnly: true, sameSite: 'lax', secure: cookieOptions.secure });
     await regenerate(req);
     req.session.userId = String(user._id);
     await save(req);

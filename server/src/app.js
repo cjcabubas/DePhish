@@ -6,7 +6,7 @@ import session from 'express-session';
 import { createAuthService } from './services/authService.js';
 import { createAuthController } from './controllers/authController.js';
 import { authRoutes } from './routes/authRoutes.js';
-export function createApp({ config, users, store, isReady = () => true, authLimit = 15 }) {
+export function createApp({ config, users, store, scans, isReady = () => true, authLimit = 15 }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -14,7 +14,6 @@ export function createApp({ config, users, store, isReady = () => true, authLimi
   app.use(express.json({ limit: '16kb' }));
   app.get('/health', (req, res) => res.status(isReady() ? 200 : 503).json({ service: 'DePhish-Auth', ready: isReady() }));
   app.use('/api/links', linkRoutes);
-  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000'));
   app.use('/api/auth', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     if (!isReady() || !store) return res.status(503).json({ message: 'Accounts are not available yet. Please try again later.' });
@@ -26,10 +25,11 @@ export function createApp({ config, users, store, isReady = () => true, authLimi
     next();
   });
   if (store) {
-    const cookie = { httpOnly: true, secure: config.production, sameSite: 'lax', path: '/api/auth', maxAge: 7 * 24 * 60 * 60 * 1000 };
-    app.use('/api/auth', session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
+    const cookie = { httpOnly: true, secure: config.production, sameSite: 'lax', path: '/api', maxAge: 7 * 24 * 60 * 60 * 1000 };
+    app.use(['/api/auth', '/api/scans'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
     app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie), users, authLimit));
   }
+  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, origins: config.origins }));
   app.use((req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
   app.use((error, req, res, next) => {
     if (error.code === 11000) return res.status(409).json({ message: 'An account with this email already exists.' });

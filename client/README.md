@@ -15,7 +15,7 @@ Vite forwards `/api/scans`, `/api/links`, and `/api/auth` to Express on port 500
 
 For deployment, serve the frontend and Express API routes on the same origin using a reverse proxy. An optional `VITE_SCAN_API_URL` overrides the scan origin; cross-origin deployments require corresponding server configuration. Never put secrets in `VITE_` variables: they are public browser configuration.
 
-History lives in page memory and resets on refresh or account changes. Community reports and admin statistics still use demo data.
+Signed-in history is loaded from the authenticated Express API. Anonymous history lives in page memory and resets on refresh or account changes. Community reports and admin statistics still use demo data.
 
 ## Checks
 

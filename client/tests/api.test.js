@@ -7,6 +7,7 @@ test('scan request, history, and service errors', async () => {
   const result = { prediction: 'Legitimate', risk_score: 12.3, risk_level: 'Low Risk', message_type: 'sms', detected_indicators: [], detected_urls: [] };
   try {
     globalThis.fetch = async (url, options) => {
+      if (url === '/api/scans') return { status: 401 };
       assert.equal(url, '/api/scans/analyze');
       assert.equal(options.method, 'POST');
       assert.deepEqual(JSON.parse(options.body), { text: 'See you at lunch', type: 'sms' });
@@ -27,6 +28,7 @@ test('scan request, history, and service errors', async () => {
     await assert.rejects(api.scans.analyze('test'), /timed out/);
     globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
     await assert.rejects(api.scans.analyze('test'), /invalid result/);
+    globalThis.fetch = async () => ({ status: 401 });
     assert.equal((await api.scans.list()).length, 1);
   } finally { globalThis.fetch = originalFetch; }
 });

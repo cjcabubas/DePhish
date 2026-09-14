@@ -21,10 +21,10 @@ The default address is `http://127.0.0.1:5000`. Use `npm run dev` for automatic 
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` is reserved for future scan persistence; it does not enable storage or rename the users collection.
+4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` selects the scan-history collection (default `scan_reports`). It does not rename the users collection.
 5. Restart Express. `/health` returns HTTP 200 with `ready: true` when accounts are available.
 
-Users and sessions use the `users` and `sessions` collections. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
+Users and sessions use the `users` and `sessions` collections. Signed-in scans save their final combined result and a short message title in `scan_reports`; anonymous scans are not persisted. History is scoped to the authenticated user; older records without an owner are not exposed. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
 If Atlas is missing or fails at startup, account routes return 503 while scanning stays available. Resolve the connection issue and restart to enable accounts.
 
@@ -32,6 +32,7 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| GET | `/api/scans` | Current user history, limit 1–100 |
 | POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
 | POST | `/api/links/check` | Inspect one public URL |
 | POST | `/api/auth/signup` | Register and start a session |
@@ -50,7 +51,7 @@ Account POST requests require JSON and `X-DePhish-Client: web`; the frontend sup
 
 Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requires HTTPS, `NODE_ENV=production`, exact `CLIENT_ORIGINS`, and a same-origin proxy for Express routes. Set `TRUST_PROXY=1` only behind one trusted proxy. Multiple server instances need shared rate limits.
 
-Email verification, password reset, persistent scan history, and report/admin APIs are not implemented.
+Email verification, password reset, and report/admin APIs are not implemented.
 
 ## Tests
 
