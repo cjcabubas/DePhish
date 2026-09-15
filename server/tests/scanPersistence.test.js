@@ -21,7 +21,7 @@ test('saves complete assessed result under authenticated owner and tolerates fai
  try {
   const controller=scanController('http://localhost:8000',{create:async fields=>{saved=fields;return {_id:'scan1'};}});
   await controller({body:{text:'Meeting',type:'email'},user:{_id:'owner'}},res);
-  assert.equal(saved.userId,'owner'); assert.equal(saved.result.scoring_version,'3.1.0-link-policy');
+  assert.equal(saved.userId,'owner'); assert.equal(saved.result.scoring_version,'3.1.2-link-policy');
   assert.deepEqual(saved.result.link_checks,[]); assert.equal(output.persistence.status,'saved');
   assert.deepEqual(saved.result.detected_indicators,model.detected_indicators);
   assert.deepEqual(saved.result.model_explanation,model.model_explanation);

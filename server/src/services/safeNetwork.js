@@ -15,6 +15,8 @@ export function normalizeUrl(value) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port || !url.hostname.includes('.') || url.hostname.endsWith('.'))
     throw new LinkError('Use a public HTTP/HTTPS domain with no embedded credentials or custom port.');
   url.hash = '';
+  if (url.hostname.length > 253 || url.hostname.split('.').some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))
+    throw new LinkError('The website name contains invalid characters or an invalid domain label.');
   return url;
 }
 export function isPublicAddress(address) {
@@ -26,6 +28,7 @@ export function isPublicAddress(address) {
 }
 export async function resolvePublic(hostname, signal, lookup = dns.lookup) {
   signal?.throwIfAborted();
+  if (/(^|\.)invalid$/i.test(hostname)) throw new LinkError('The .invalid suffix is reserved and cannot identify a public website.', 'INVALID_DOMAIN');
   const blocked = /(^|\.)(localhost|local|internal|test|invalid|example|onion)$/.test(hostname);
   if (blocked || !hostname.includes('.')) throw new LinkError('Local and reserved destinations are blocked.', 'BLOCKED_DESTINATION');
   // DNS answers are validated together, then one address is pinned for the connection.
@@ -34,7 +37,8 @@ export async function resolvePublic(hostname, signal, lookup = dns.lookup) {
   let records;
   try { records = await Promise.race([lookup(hostname, { all: true, verbatim: true }), abort]); }
   finally { signal?.removeEventListener('abort', stop); }
-  if (!records.length || records.some(record => !isPublicAddress(record.address))) throw new LinkError('Local, private, or reserved network destinations are blocked.', 'BLOCKED_DESTINATION');
+  if (!Array.isArray(records) || !records.length) throw new LinkError('No DNS address was found for this website.', 'ENOTFOUND');
+  if (records.some(record => !isPublicAddress(record.address))) throw new LinkError('Local, private, or reserved network destinations are blocked.', 'BLOCKED_DESTINATION');
   return records.find(record => record.family === 4) || records[0];
 }
 export function certificateSummary(cert, now = Date.now()) {

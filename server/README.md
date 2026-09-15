@@ -46,6 +46,8 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 
 Scans accept `{ "text": "message or URL", "type": "email" }`; type can also be `sms` or `auto`. `ML_API_URL` selects the upstream ML service. Link checks require outbound DNS/HTTPS access but no Atlas or API key. See the [risk policy](../ML/MODEL_UPGRADE.md).
 
+Link inspection reports specific `destination.failure_code` values for DNS/connection failures, timeouts, certificate failures, invalid or missing redirect destinations, redirect loops/limits, restricted access, and remote rate limits. Invalid domain labels are rejected before inspection. Registration lookup failures retain completed destination evidence. HTTP 401/403/429 and unsupported HEAD responses (405/501) leave inspection incomplete and add no broken-link points; these are inspection limitations rather than evidence of phishing. Scan results show the reason beside the affected link.
+
 Account POST requests require JSON and `X-DePhish-Client: web`; the frontend supplies both. Passwords require at least 12 characters and at most 72 UTF-8 bytes. Signup always creates a regular user. Admin roles must be assigned through trusted administration.
 
 ## Structure and deployment

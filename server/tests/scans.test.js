@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assessScan } from '../src/services/scanService.js';
+import { inspectLink } from '../src/services/linkService.js';
 const base = { risk_score: 20, prediction: 'Legitimate', probabilities: { phishing: .2 }, detected_urls: [{ url: 'https://example.com' }, { url: 'https://example.com' }] };
+
+test('reserved .invalid example adds broken-link points', async () => {
+  const url = 'https://google-account-security-check.invalid/login/verify';
+  const result = await assessScan({}, { classify: async () => ({ ...base, detected_urls: [{ url }] }), inspect: inspectLink });
+  assert.equal(result.link_checks[0].destination.failure_code, 'INVALID_DOMAIN');
+  assert.equal(result.link_checks[0].risk.factors[0].code, 'invalid_domain');
+  assert.equal(result.link_risk.points, 5);
+  assert.equal(result.risk_score, 25);
+});
 test('link evidence affects decision without changing model probability or duplicating points', async () => {
   let calls = 0;
   const result = await assessScan({}, { classify: async () => base, inspect: async url => {

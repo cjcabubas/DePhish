@@ -1,7 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeUrl, isPublicAddress, resolvePublic, certificateSummary, publicJson } from '../src/services/safeNetwork.js';
-import { parseRegistration, lookupRegistration, inspectDestination, inspectLink } from '../src/services/linkService.js';
+import { parseRegistration, lookupRegistration, inspectDestination, inspectLink, inspectionError } from '../src/services/linkService.js';
+import { linkRisk } from '../src/services/scanService.js';
+
+test('invalid domain labels and empty DNS answers fail before connection', async () => {
+  for (const input of ['https://bad_name.com', 'https://-bad.com', 'https://bad-.com', `https://${'a'.repeat(64)}.com`]) assert.throws(() => normalizeUrl(input), /domain label/);
+  await assert.rejects(resolvePublic('public.com', AbortSignal.timeout(1000), async () => []), { code: 'ENOTFOUND' });
+  const controller = new AbortController(); controller.abort();
+  let called = false;
+  await assert.rejects(resolvePublic('public.com', controller.signal, async () => { called = true; return []; }));
+  assert.equal(called, false);
+});
+
+test('redirect errors are explicit and retain inspected hops', async () => {
+  const signal = AbortSignal.timeout(1000), url = normalizeUrl('https://example.com');
+  for (const [location, code] of [[undefined, 'MISSING_REDIRECT_LOCATION'], ['file:///secret', 'INVALID_REDIRECT'], ['https://user:pass@example.com', 'INVALID_REDIRECT'], ['http://example.com', 'HTTPS_DOWNGRADE']]) {
+    const result = await inspectDestination(url, signal, async () => ({ status: 302, location }));
+    assert.equal(result.failure_code, code); assert.equal(result.redirects.length, 1);
+  }
+  const loop = await inspectDestination(url, signal, async () => ({ status: 302, location: url.href }));
+  assert.equal(loop.failure_code, 'REDIRECT_LOOP');
+  let calls = 0;
+  const limit = await inspectDestination(url, signal, async () => ({ status: 302, location: `/hop${++calls}` }));
+  assert.equal(limit.failure_code, 'REDIRECT_LIMIT'); assert.equal(calls, 4);
+});
+
+test('restricted requests and unsupported HEAD stay unknown without server-error points', async () => {
+  for (const [status, code] of [[401, 'ACCESS_RESTRICTED'], [403, 'ACCESS_RESTRICTED'], [429, 'REMOTE_RATE_LIMIT'], [405, 'HEAD_UNSUPPORTED'], [501, 'HEAD_UNSUPPORTED']]) {
+    const destination = await inspectDestination(normalizeUrl('https://example.com'), AbortSignal.timeout(1000), async () => ({ status }));
+    assert.equal(destination.status, 'incomplete'); assert.equal(destination.failure_code, code);
+    assert.equal(linkRisk({ destination }).score, 0);
+  }
+});
+
+test('timeouts, certificate errors, environment restrictions, and bad responses stay distinct', async () => {
+  for (const [error, code, tls] of [
+    [{ name: 'TimeoutError' }, 'TIMEOUT', 'unavailable'],
+    [{ cause: { code: 'ENOTFOUND' } }, 'ENOTFOUND', 'unavailable'],
+    [{ code: 'ERR_TLS_CERT_ALTNAME_INVALID' }, 'ERR_TLS_CERT_ALTNAME_INVALID', 'invalid'],
+    [{ code: 'EPROTO' }, 'EPROTO', 'unavailable'],
+    [{ code: 'EACCES' }, 'EACCES', 'unavailable'],
+  ]) {
+    const failure = inspectionError(error);
+    assert.equal(failure.failure_code, code); assert.equal(failure.tls.status, tls);
+  }
+  const invalid = await inspectDestination(normalizeUrl('https://example.com'), AbortSignal.timeout(1000), async () => ({ status: undefined }));
+  assert.equal(invalid.failure_code, 'INVALID_RESPONSE'); assert.equal(linkRisk({ destination: invalid }).score, 0);
+});
+
+test('registration lookup rejection preserves completed connection evidence', async () => {
+  const result = await inspectLink('https://example.com', { request: async () => ({ status: 200, tls: { status: 'valid' } }), registration: () => { throw Object.assign(new Error(), { code: 'TIMEOUT' }); } });
+  assert.equal(result.registration.status, 'unavailable'); assert.equal(result.registration.failure_code, 'TIMEOUT');
+  assert.equal(result.destination.status, 'checked'); assert.equal(result.destination.redirects[0].tls.status, 'valid');
+});
 
 test('URL validation and SSRF address boundaries', async () => {
   for (const input of ['file:///etc/passwd', 'http://user:pass@example.com', 'http://example.com:8080', 'http://localhost', 'http://example.com\\@127.0.0.1', 'http://example.com\n']) {

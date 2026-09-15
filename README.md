@@ -32,8 +32,6 @@ For accounts and saved history, configure `server/.env` as described below. No r
 **1. ML service**
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r ML/requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn ML.src.api.main:app --host 127.0.0.1 --port 8000
 ```
 
@@ -64,7 +62,8 @@ Open the URL printed by Vite. Keep all three services running. Restart Express a
 - Email/SMS scanning, including a URL pasted into the message field.
 - Automatic domain registration, age, redirect, and TLS checks for up to three unique links.
 - Combined message and link risk score with explanations.
-- Detailed findings with quoted evidence, context, verification steps, and expandable learned-model contributions.
+- Plain-language findings with quoted evidence and practical next steps, plus one technical-details section for relevant wording, context, and link facts.
+- Clear link-check failures for invalid domains, DNS/connection errors, redirects, restricted access, and timeouts. Incomplete checks are distinguished from checks with no extra warnings.
 - Signup, login/logout, and MongoDB sessions when Atlas is configured.
 - All completed scan reports, including guest messages, are saved when MongoDB is available. Account history remains private; guest results remain revisitable only during the page session.
 - Full assessed results, including detailed evidence, can be revisited from scan history.
