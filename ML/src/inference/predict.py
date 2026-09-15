@@ -19,7 +19,9 @@ if str(BASE_DIR) not in sys.path:
 
 from src.features.text_features import CombinedFeaturePipeline
 from src.features.url_features import extract_urls, analyze_url
-from src.features.indicator_features import extract_indicators, classify_phishing_type
+from src.features.indicator_features import extract_indicators, classify_phishing_type, INDICATOR_PATTERNS
+from src.inference.evidence import detailed_indicators
+from src.inference.explanation import explain_model
 
 
 def score_prediction(phishing_prob: float) -> Dict[str, Any]:
@@ -98,7 +100,7 @@ class PhishingDetector:
         legit_prob = float(1.0 - phishing_prob)
 
         # 2. Heuristics & Explainability
-        indicators = extract_indicators(text)
+        indicators = detailed_indicators(text, extract_indicators(text), INDICATOR_PATTERNS)
         raw_urls = extract_urls(text)
         analyzed_urls = [analyze_url(u) for u in raw_urls]
 
@@ -107,6 +109,12 @@ class PhishingDetector:
 
         # 5. Phishing type categorization
         phishing_type = classify_phishing_type(indicators, has_url=bool(analyzed_urls))
+        specific_types = {'secret_disclosure': 'Security Secret Solicitation',
+                          'payment_redirection': 'Payment Redirection',
+                          'remote_access': 'Remote Access Solicitation',
+                          'security_bypass': 'Security Bypass Request'}
+        phishing_type = next((specific_types[i['category']] for i in indicators
+                              if i['category'] in specific_types), phishing_type)
 
         # 6. Auto-detect message type if requested
         detected_type = message_type
@@ -126,6 +134,8 @@ class PhishingDetector:
             "model_version": self.metadata.get("version", "1.0.0"),
             "scoring_version": "2.0.0",
             "model_limitations": self.metadata.get("limitations", []),
+            "model_explanation": explain_model(self.model, text, phishing_prob),
+            "analysis_version": "1.0.0-detailed-evidence",
         }
 
     def batch_analyze(self, texts: List[str], message_type: str = "auto") -> List[Dict[str, Any]]:

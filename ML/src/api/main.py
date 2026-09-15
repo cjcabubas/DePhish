@@ -83,12 +83,24 @@ class AnalyzeRequest(BaseModel):
         return value
 
 
+class EvidenceItem(BaseModel):
+    text: str
+    start: int
+    end: int
+    context: str
+
+
 class IndicatorItem(BaseModel):
     category: str
     title: str
     description: str
     severity: str
     matched_terms: List[str]
+    why_it_matters: str = ""
+    benign_context: str = ""
+    recommended_action: str = ""
+    evidence: List[EvidenceItem] = Field(default_factory=list)
+    source: str = "observed_pattern"
 
 
 class UrlAnalysisItem(BaseModel):
@@ -117,6 +129,8 @@ class AnalyzeResponse(BaseModel):
     model_version: str
     scoring_version: str
     model_limitations: List[str] = Field(default_factory=list)
+    model_explanation: Dict[str, Any] = Field(default_factory=dict)
+    analysis_version: str = ""
 
 
 class BatchAnalyzeRequest(BaseModel):

@@ -1,4 +1,3 @@
-import { api as mockApi } from './mockApi.js';
 import { authApi } from './authApi.js';
 
 const baseUrl = (import.meta.env?.VITE_SCAN_API_URL || '').replace(/\/$/, '');
@@ -45,9 +44,12 @@ export async function analyzeMessage(text, type = 'email') {
   }
 }
 
-async function listScans() {
+async function listScans({ authenticated = false } = {}) {
   const response = await fetch(`${baseUrl}/api/scans`, { credentials: 'same-origin' });
-  if (response.status === 401) return [...scans];
+  if (response.status === 401) {
+    if (authenticated) throw new Error('Your session has expired. Please log in again.');
+    return [...scans];
+  }
   if (!response.ok) throw new Error('Scan history is unavailable. Please try again.');
   const data = await response.json();
   return data.scans.map(row => ({
@@ -58,9 +60,16 @@ async function listScans() {
   }));
 }
 
-// Community reports remain demo data until their backend is implemented.
+async function dashboardStats(admin = false) {
+  const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats`, { credentials: 'same-origin' });
+  if (response.status === 401) throw new Error('Your session has expired. Please log in again.');
+  if (response.status === 403) throw new Error('You do not have access to this dashboard.');
+  if (!response.ok) throw new Error('Dashboard data is unavailable. Please try again.');
+  return response.json();
+}
+
 export const api = {
-  reports: mockApi.reports,
   auth: authApi,
+  dashboard: { stats: dashboardStats },
   scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: listScans, get: async id => (await listScans()).find(scan => scan.id === id) },
 };

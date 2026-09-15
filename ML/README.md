@@ -27,6 +27,14 @@ Single requests accept `text` (1–5,000 characters) and `type` (`email`, `sms`,
 
 This service returns the message-model score, probabilities, pattern indicators, and extracted URLs. Express adds live link evidence through `/api/scans/analyze`, which is the frontend's scan endpoint.
 
+### Detailed evidence
+
+Each indicator includes verbatim passages and their character offsets, why the pattern matters, legitimate-context caveats, and a specific verification step. Additional explanation rules cover security-secret disclosure, payment redirection, remote access, security bypass, and unusual text encoding. Direct warnings such as “never share your OTP” are excluded from the new solicitation rules. Rules still have limited context understanding; quoted instructions may match.
+
+`model_explanation` reports exact additive contributions to the v2 ensemble’s mean pre-calibration SVM margin, grouped into words, character patterns, and structured features. The strongest informative observed word features are shown in each direction; common function words remain in group totals but are omitted from phrase lists. Their values are margin units, not changes in probability or combined risk points. Calibration-fold probability ranges describe variation between trained models, not confidence intervals. Estimates within five percentage points of a decision boundary are marked as near-threshold. The legacy model returns an explicit unavailable explanation.
+
+This update improves evidence coverage and model transparency, without retraining or altering the frozen feature extraction used by the existing artifact. It does not establish an accuracy improvement or Filipino/Taglish support. New detailed results are persisted with signed-in scans; earlier history entries retain their original results.
+
 The model score is phishing probability × 100. Cutoffs are 35 for Suspicious and 70 for Phishing, evaluated using unrounded probability. Confidence refers to the binary classifier; Suspicious is a threshold range, not a trained third class.
 
 ## Evaluation and training

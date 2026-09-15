@@ -98,3 +98,15 @@ def test_score_matches_model_probability():
     data = client.post("/api/analyze", json={"text": "Urgent: confirm your password at https://example.com", "type": "email"}).json()
     assert abs(data["risk_score"] - data["probabilities"]["phishing"] * 100) <= .06
     assert data["scoring_version"] == "2.0.0"
+
+
+def test_deep_evidence_survives_single_and_batch_response_serialization():
+    text = 'Please share your OTP with our support agent.'
+    single = client.post('/api/analyze', json={'text': text}).json()
+    batch = client.post('/api/batch-predict', json={'messages': [{'text': text}]}).json()['results'][0]
+    for data in [single, batch]:
+        indicator = next(i for i in data['detected_indicators'] if i['category'] == 'secret_disclosure')
+        assert indicator['evidence'][0]['text'] == 'share your OTP'
+        assert indicator['why_it_matters'] and indicator['benign_context']
+        assert data['model_explanation']['available'] is True
+        assert data['analysis_version'] == '1.0.0-detailed-evidence'

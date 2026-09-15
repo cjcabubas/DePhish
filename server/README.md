@@ -33,6 +33,8 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 | Method | Route | Purpose |
 | --- | --- | --- |
 | GET | `/api/scans` | Current user history, limit 1–100 |
+| GET | `/api/scans/stats` | Current user's all-time totals, common indicators, and 30-day UTC activity |
+| GET | `/api/scans/admin/stats` | Admin-only aggregate saved-scan statistics across accounts |
 | POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
 | POST | `/api/links/check` | Inspect one public URL |
 | POST | `/api/auth/signup` | Register and start a session |
@@ -51,7 +53,9 @@ Account POST requests require JSON and `X-DePhish-Client: web`; the frontend sup
 
 Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requires HTTPS, `NODE_ENV=production`, exact `CLIENT_ORIGINS`, and a same-origin proxy for Express routes. Set `TRUST_PROXY=1` only behind one trusted proxy. Multiple server instances need shared rate limits.
 
-Email verification, password reset, and report/admin APIs are not implemented.
+Dashboard totals include all account-owned saved scans, independent of the history page limit. Anonymous scans and legacy records without an owner are excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
+
+Email verification, password reset, and community-report APIs are not implemented.
 
 ## Tests
 
