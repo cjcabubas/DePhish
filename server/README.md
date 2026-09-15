@@ -24,7 +24,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` selects the scan-history collection (default `scan_reports`). It does not rename the users collection.
 5. Restart Express. `/health` returns HTTP 200 with `ready: true` when accounts are available.
 
-Users and sessions use the `users` and `sessions` collections. Signed-in scans save their final combined result and a short message title in `scan_reports`; anonymous scans are not persisted. History is scoped to the authenticated user; older records without an owner are not exposed. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
+Users and sessions use the `users` and `sessions` collections. All completed scans save the full message, combined result, and short title in `scan_reports`. Guests use a null userId and `source: guest`; signed-in scans retain their authenticated owner. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
 If Atlas is missing or fails at startup, account routes return 503 while scanning stays available. Resolve the connection issue and restart to enable accounts.
 
@@ -35,6 +35,7 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 | GET | `/api/scans` | Current user history, limit 1–100 |
 | GET | `/api/scans/stats` | Current user's all-time totals, common indicators, and 30-day UTC activity |
 | GET | `/api/scans/admin/stats` | Admin-only aggregate saved-scan statistics across accounts |
+| GET | `/api/scans/admin/identifiers` | Admin-only scanner-flagged identifiers, limit 1–100 |
 | POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
 | POST | `/api/links/check` | Inspect one public URL |
 | POST | `/api/auth/signup` | Register and start a session |
@@ -53,11 +54,23 @@ Account POST requests require JSON and `X-DePhish-Client: web`; the frontend sup
 
 Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requires HTTPS, `NODE_ENV=production`, exact `CLIENT_ORIGINS`, and a same-origin proxy for Express routes. Set `TRUST_PROXY=1` only behind one trusted proxy. Multiple server instances need shared rate limits.
 
-Dashboard totals include all account-owned saved scans, independent of the history page limit. Anonymous scans and legacy records without an owner are excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
+Admin totals include account-owned and explicitly marked guest reports, independent of the history page limit. Personal dashboards include only the authenticated owner's scans. Legacy unowned records without a guest source remain excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
 
 Email verification, password reset, and community-report APIs are not implemented.
 
+## Scanner-flagged identifier registry
+
+The scanner UI includes an empty ToS placeholder and requires its checkbox before scanning. Reports record `tosAcknowledged` from that checkbox. This is a placeholder acknowledgement without published terms or a terms version; it does not represent acceptance of a completed legal document. Direct API clients are not gated by the placeholder checkbox.
+
+Final `Phishing` scans automatically upsert links, email addresses, and recognized phone numbers into `flagged_identifiers`, including anonymous scans when MongoDB is ready. `Suspicious` and `Legitimate` scans do not write. A unique key deduplicates identifiers; records contain first/last seen times, detection counts, and the latest scores, indicator categories, model/scoring versions, and optional account/history references. Full message text is not copied into this collection. Up to 30 unique identifiers are recorded per scan.
+
+URL identity includes scheme, hostname, and path, excluding embedded credentials, query parameters, and fragments. Email addresses are lowercased. Philippine mobile numbers normalize to +63; explicitly international numbers retain their dialing prefix. Extraction is conservative and does not validate ownership or global phone-number validity.
+
+`scanner_flagged` means an identifier appeared in a message assessed as phishing. Messages can mention innocent addresses, official links, or recipients; the flag does not establish that each identifier is malicious. The registry is restricted to admins, and does not automatically change future scan scores. Review states are reserved in the schema; a review workflow is not implemented. Database write failures return a registry-status notice while retaining the scan result, and partial writes may have succeeded. The existing Atlas configuration and session secret are required to initialize persistence.
+
 ## Tests
+
+Rate limits are per client IP: 120 total API requests/minute, 30 combined history/dashboard reads/minute, 10 scans/minute, 10 standalone link checks/minute, and 15 login/signup attempts per 15 minutes. Rejections return HTTP 429 and Retry-After; health checks bypass the API budget. Counters are in memory per server process. Shared counters are required when deploying multiple instances. Configure trusted proxies accurately so client IPs are identified correctly.
 
 ```powershell
 npm test

@@ -6,11 +6,13 @@ import session from 'express-session';
 import { createAuthService } from './services/authService.js';
 import { createAuthController } from './controllers/authController.js';
 import { authRoutes } from './routes/authRoutes.js';
-export function createApp({ config, users, store, scans, isReady = () => true, authLimit = 15 }) {
+import { apiRateLimit } from './middleware/rateLimits.js';
+export function createApp({ config, users, store, scans, identifiers, isReady = () => true, authLimit = 15, apiLimit = 120 }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
   app.use(helmet());
+  app.use('/api', apiRateLimit({ limit: apiLimit }));
   app.use(express.json({ limit: '16kb' }));
   app.get('/health', (req, res) => res.status(isReady() ? 200 : 503).json({ service: 'DePhish-Auth', ready: isReady() }));
   app.use('/api/links', linkRoutes);
@@ -29,7 +31,7 @@ export function createApp({ config, users, store, scans, isReady = () => true, a
     app.use(['/api/auth', '/api/scans'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
     app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie), users, authLimit));
   }
-  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, origins: config.origins }));
+  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, identifiers, origins: config.origins }));
   app.use((req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
   app.use((error, req, res, next) => {
     if (error.code === 11000) return res.status(409).json({ message: 'An account with this email already exists.' });

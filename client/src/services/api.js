@@ -3,7 +3,7 @@ import { authApi } from './authApi.js';
 const baseUrl = (import.meta.env?.VITE_SCAN_API_URL || '').replace(/\/$/, '');
 const scans = [];
 
-export async function analyzeMessage(text, type = 'email') {
+export async function analyzeMessage(text, type = 'email', { tosAccepted } = {}) {
   if (!text.trim()) throw new Error('Paste a message before scanning.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 50000);
@@ -12,10 +12,11 @@ export async function analyzeMessage(text, type = 'email') {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' },
       credentials: 'same-origin',
-      body: JSON.stringify({ text, type }),
+      body: JSON.stringify({ text, type, ...(typeof tosAccepted === 'boolean' ? { tosAccepted } : {}) }),
       signal: controller.signal,
     });
     if (!response.ok) {
+      if (response.status === 429) throw new Error('Too many scans. Please wait a minute before trying again.');
       if ([502, 504].includes(response.status)) throw new Error('Cannot reach the scanning service. Please check that it is running and try again.');
       throw new Error(response.status === 503
         ? 'The scanning service is unavailable. Please try again later.'
@@ -50,6 +51,7 @@ async function listScans({ authenticated = false } = {}) {
     if (authenticated) throw new Error('Your session has expired. Please log in again.');
     return [...scans];
   }
+  if (response.status === 429) throw new Error('Too many history requests. Please wait a minute before trying again.');
   if (!response.ok) throw new Error('Scan history is unavailable. Please try again.');
   const data = await response.json();
   return data.scans.map(row => ({
@@ -64,6 +66,7 @@ async function dashboardStats(admin = false) {
   const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats`, { credentials: 'same-origin' });
   if (response.status === 401) throw new Error('Your session has expired. Please log in again.');
   if (response.status === 403) throw new Error('You do not have access to this dashboard.');
+  if (response.status === 429) throw new Error('Too many dashboard requests. Please wait a minute before trying again.');
   if (!response.ok) throw new Error('Dashboard data is unavailable. Please try again.');
   return response.json();
 }

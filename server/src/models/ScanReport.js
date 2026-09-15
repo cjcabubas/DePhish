@@ -1,7 +1,10 @@
 import mongoose from 'mongoose';
 export function createScanRepository(collectionName = 'scan_reports') {
   const schema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'User' },
+    userId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: 'User' },
+    source: { type: String, enum: ['account', 'guest'], default: 'account' },
+    message: { type: String, maxlength: 5000 },
+    tosAcknowledged: { type: Boolean, default: false },
     title: { type: String, required: true, maxlength: 80 },
     result: { type: mongoose.Schema.Types.Mixed, required: true },
   }, { timestamps: true, bufferCommands: false });
@@ -13,13 +16,13 @@ export function createScanRepository(collectionName = 'scan_reports') {
     create: fields => Scan.create(fields),
     list: (userId, limit) => Scan.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean(),
     async stats(userId, since) {
-      const match = userId ? { userId: new mongoose.Types.ObjectId(userId) } : { userId: { $type: 'objectId' } };
+      const match = userId ? { userId: new mongoose.Types.ObjectId(userId) } : { $or: [{ userId: { $type: 'objectId' } }, { source: 'guest' }] };
       const countWhere = prediction => ({ $sum: { $cond: [{ $eq: ['$result.prediction', prediction] }, 1, 0] } });
       const [data] = await Scan.aggregate([
         { $match: match },
         { $facet: {
           totals: [{ $group: { _id: null, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }],
-          accounts: [{ $group: { _id: '$userId' } }, { $count: 'count' }],
+          accounts: [{ $match: { userId: { $type: 'objectId' } } }, { $group: { _id: '$userId' } }, { $count: 'count' }],
           activity: [{ $match: { createdAt: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } }, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }, { $sort: { _id: 1 } }],
           indicators: [{ $project: { categories: { $setUnion: [{ $map: { input: { $cond: [{ $isArray: '$result.detected_indicators' }, '$result.detected_indicators', []] }, as: 'indicator', in: '$$indicator.category' } }, []] } } }, { $unwind: '$categories' }, { $match: { categories: { $type: 'string', $ne: '' } } }, { $group: { _id: '$categories', count: { $sum: 1 } } }, { $sort: { count: -1, _id: 1 } }, { $limit: 5 }],
         } },

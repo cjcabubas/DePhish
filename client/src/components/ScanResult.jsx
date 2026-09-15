@@ -80,6 +80,8 @@ export function ScanResult({ result, go }) {
         {' '}{result.link_risk.incomplete && 'Some link evidence was unavailable.'} {result.link_risk.skipped > 0 && `${result.link_risk.skipped} additional links were not inspected.`}</p>}
       <ModelDetails result={result}/>
       {result.persistence?.status === 'unavailable' && <p role="status">{result.persistence.reason}</p>}
+      {result.identifier_registry?.status === 'saved' && <p role="status">{result.identifier_registry.count} unique identifiers saved to the scanner-flagged registry. This records their appearance in a phishing-assessed message; it does not verify that each identifier is malicious.</p>}
+      {result.identifier_registry?.status === 'unavailable' && <p role="status">{result.identifier_registry.reason}</p>}
       <div className="scanAdvice"><b>What to do next</b><p>{low ? 'Confirm unexpected requests in the official app or through a known contact.' : 'Avoid the message’s links and do not share passwords or OTPs. Open the official app yourself or contact the organization using a known number.'}</p>
         <details className="analysisDetails"><summary>What this scan can and cannot establish</summary>
           <p>The combined score is an assessment, not a probability or safety guarantee. Sender identity, attachment contents, and website reputation are not verified. Link weights are provisional. Filipino/Taglish accuracy is not validated.</p>

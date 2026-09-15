@@ -4,15 +4,19 @@ import { readConfig } from './config/env.js';
 import { User, userRepository } from './models/User.js';
 import { createApp } from './app.js';
 import { createScanRepository } from './models/ScanReport.js';
+import { createIdentifierRepository } from './models/FlaggedIdentifier.js';
 const config = readConfig();
 let store;
 let scans;
+let identifiers;
 if (config.mongoUri && config.sessionSecret) {
   try {
     await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000, dbName: config.dbName });
     await User.init(); // Establish the unique email index before accepting signup.
     scans = createScanRepository(config.scanCollectionName);
     await scans.init();
+    identifiers = createIdentifierRepository();
+    await identifiers.init();
     store = MongoStore.create({ clientPromise: Promise.resolve(mongoose.connection.getClient()), collectionName: 'sessions', ttl: 7 * 24 * 60 * 60 });
     store.on('error', () => console.error('Session storage error. Check database connectivity.'));
   } catch {
@@ -20,11 +24,12 @@ if (config.mongoUri && config.sessionSecret) {
     await mongoose.disconnect();
     store = undefined;
     scans = undefined;
+    identifiers = undefined;
   }
 } else {
   console.log('Accounts are unconfigured. Set MONGODB_URI and SESSION_SECRET in server/.env, then restart.');
 }
-const app = createApp({ config, users: userRepository, store, scans, isReady: () => Boolean(store) && mongoose.connection.readyState === 1 });
+const app = createApp({ config, users: userRepository, store, scans, identifiers, isReady: () => Boolean(store) && mongoose.connection.readyState === 1 });
 const server = app.listen(config.port, config.host, () => console.log('Auth service listening on port ' + config.port));
 async function shutdown() { server.close(async () => { await mongoose.disconnect(); process.exit(0); }); }
 process.on('SIGINT', shutdown);

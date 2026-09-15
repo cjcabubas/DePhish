@@ -49,6 +49,8 @@ See [model comparison, rollback, and link scoring](MODEL_UPGRADE.md) for details
 
 ## Tests
 
+Direct `/api/` access is limited to 120 requests per minute per connecting IP, with HTTP 429 and Retry-After responses. Batch requests count as one request and remain capped at 100 messages. Health checks are exempt. Counters are bounded and kept per process; when Express forwards scans, those requests share its connecting IP. Keep this service private in deployment and use shared limits if scaling to multiple workers.
+
 ```powershell
 .\.venv\Scripts\python.exe -m pytest ML/tests -q
 ```

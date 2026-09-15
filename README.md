@@ -66,8 +66,9 @@ Open the URL printed by Vite. Keep all three services running. Restart Express a
 - Combined message and link risk score with explanations.
 - Detailed findings with quoted evidence, context, verification steps, and expandable learned-model contributions.
 - Signup, login/logout, and MongoDB sessions when Atlas is configured.
-- Private persisted scan history for signed-in users; anonymous history lasts for the page session.
+- All completed scan reports, including guest messages, are saved when MongoDB is available. Account history remains private; guest results remain revisitable only during the page session.
 - Full assessed results, including detailed evidence, can be revisited from scan history.
+- Final phishing scans record deduplicated links, email addresses, and recognized phone numbers in an admin-only scanner-flagged registry when MongoDB is configured.
 
 Account and admin dashboards use live saved-scan totals, assessment breakdowns, 30-day UTC activity, and common indicators. Admin statistics contain aggregate data across accounts; regular users see only their own data. Report submission/review and learning modules are not implemented. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
 

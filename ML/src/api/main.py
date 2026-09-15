@@ -18,6 +18,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.inference.predict import PhishingDetector
+from src.api.rate_limit import install_rate_limit
 
 from contextlib import asynccontextmanager
 
@@ -47,6 +48,7 @@ app = FastAPI(
 )
 
 # Enable CORS for React client / Express server
+install_rate_limit(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

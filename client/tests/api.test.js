@@ -22,6 +22,8 @@ test('scan request, history, and service errors', async () => {
     await assert.rejects(api.scans.analyze('  '), /Paste a message/);
     globalThis.fetch = async () => ({ ok: false, status: 503 });
     await assert.rejects(api.scans.analyze('test'), /service is unavailable/);
+    globalThis.fetch = async () => ({ ok: false, status: 429 });
+    await assert.rejects(api.scans.analyze('test'), /Too many scans/);
     globalThis.fetch = async () => { throw new TypeError('Failed to fetch'); };
     await assert.rejects(api.scans.analyze('test'), /Cannot reach/);
     globalThis.fetch = async () => { throw new DOMException('Aborted', 'AbortError'); };
