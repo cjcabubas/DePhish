@@ -4,7 +4,30 @@ Email and SMS phishing scanner with message classification, automatic link check
 
 ## Run locally
 
-Requirements: Node.js 22.12+ and Python 3.11+. Run each service in a separate terminal from the repository root.
+Requirements: Node.js 22.12+ and Python 3.11+.
+
+After the one-time setup below, start all three services from the repository root with:
+
+```powershell
+npm run dev
+```
+
+Open the URL printed by `[client]`. Logs are labeled `[client]`, `[server]`, and `[ml]`. All services reload when their source changes; Ctrl+C (or `q` then Enter) stops the entire stack. If a service exits, the launcher stops the others. Missing dependencies produce setup instructions. Restart the command after environment configuration or model artifact changes.
+
+### One-time setup
+
+Create the Python environment and install dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r ML/requirements.txt
+npm --prefix server ci
+npm --prefix client ci
+```
+
+For accounts and saved history, configure `server/.env` as described below. No root npm install is required.
+
+### Running services separately
 
 **1. ML service**
 
