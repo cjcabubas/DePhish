@@ -4,7 +4,7 @@ Email and SMS phishing scanner with message classification, automatic link check
 
 ## Run locally
 
-Requirements: Node.js 22.12+ and Python 3.11+.
+Requirements: Node.js 22.12+ and Python 3.11+. The commands below use Windows PowerShell. Open a terminal in the repository root (the folder containing this README and `package.json`).
 
 After the one-time setup below, start all three services from the repository root with:
 
@@ -27,7 +27,11 @@ npm --prefix client ci
 
 For accounts and saved history, configure `server/.env` as described below. No root npm install is required.
 
+For a scanning-only setup, no `.env` file is required. Accounts and database persistence require both `MONGODB_URI` and `SESSION_SECRET`; see the [Express and Atlas setup](server/README.md#configure-mongodb-atlas). The trained model is included, so no dataset download or retraining is needed.
+
 ### Running services separately
+
+After the one-time setup, open three terminals, each starting in the repository root, and run one service in each terminal:
 
 **1. ML service**
 
@@ -41,7 +45,6 @@ The trained model is included; retraining is not required.
 
 ```powershell
 cd server
-npm ci
 npm start
 ```
 
@@ -51,11 +54,21 @@ For accounts, copy `server/.env.example` to `server/.env` on a fresh checkout an
 
 ```powershell
 cd client
-npm ci
 npm run dev
 ```
 
 Open the URL printed by Vite. Keep all three services running. Restart Express after configuration changes, ML after model changes, and Vite after proxy changes.
+
+### Check that it is running
+
+- Frontend: normally `http://localhost:5173`; use the address printed by Vite.
+- ML: open `http://127.0.0.1:8000/health` and check that `model_loaded` is `true`.
+- Express: open `http://127.0.0.1:5000/health`. HTTP 200 with `ready: true` means accounts are available. HTTP 503 is expected when the database is unconfigured or unavailable; scanning can still work.
+- In the frontend, paste a message, acknowledge the current ToS placeholder, and run a scan to verify the full path through all three services.
+
+If startup reports an occupied port, stop the previous DePhish instance before restarting. Vite may choose another port when 5173 is busy; if you use that port, add its exact browser origin (for example, `http://localhost:5174`) to `CLIENT_ORIGINS` in `server/.env` and restart Express so account requests are allowed. If you change the Express port, also set `AUTH_API_PROXY_TARGET` in `client/.env` and restart Vite. The root launcher uses ML port 8000.
+
+If PowerShell blocks `npm.ps1`, use `npm.cmd` in place of `npm`. If ML fails to load, reinstall `ML/requirements.txt` into `.venv` and retain its pinned scikit-learn version for model compatibility.
 
 ## What works
 

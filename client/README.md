@@ -2,6 +2,8 @@
 
 React/Vite interface for Email/SMS scanning and accounts. See the [root guide](../README.md) to start all three services.
 
+Run these commands from the `client` folder:
+
 ```powershell
 npm ci
 npm run dev

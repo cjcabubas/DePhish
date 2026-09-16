@@ -4,6 +4,8 @@ Express/Mongoose MVC backend for accounts and combined phishing scans. React is 
 
 ## Run
 
+Run these commands from the `server` folder. Complete the [root setup](../README.md#one-time-setup) first.
+
 ```powershell
 npm ci
 npm start
