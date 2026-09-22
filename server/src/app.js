@@ -8,7 +8,8 @@ import { createAuthController } from './controllers/authController.js';
 import { authRoutes } from './routes/authRoutes.js';
 import { apiRateLimit } from './middleware/rateLimits.js';
 import { reportRoutes } from './routes/reportRoutes.js';
-export function createApp({ config, users, store, scans, identifiers, consents, reports, reportAnalyze, isReady = () => true, authLimit = 15, apiLimit = 120 }) {
+import { learnRoutes } from './routes/learnRoutes.js';
+export function createApp({ config, users, store, scans, identifiers, consents, reports, progress, reportAnalyze, isReady = () => true, authLimit = 15, apiLimit = 120 }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -29,12 +30,13 @@ export function createApp({ config, users, store, scans, identifiers, consents, 
   });
   if (store) {
     const cookie = { httpOnly: true, secure: config.production, sameSite: 'lax', path: '/api', maxAge: 7 * 24 * 60 * 60 * 1000 };
-    app.use(['/api/auth', '/api/scans', '/api/reports'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
+    app.use(['/api/auth', '/api/scans', '/api/reports', '/api/learn'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
     app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie), users, authLimit));
   }
   app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, identifiers, consents, pseudonymizationKey: config.sessionSecret, origins: config.origins }));
   app.use('/api/reports', reportRoutes({ users, scans, reports, consents, origins: config.origins,
     mlUrl: config.mlApiUrl || 'http://127.0.0.1:8000', analyze: reportAnalyze }));
+  app.use('/api/learn', learnRoutes({ users, progress }));
   app.use((req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
   app.use((error, req, res, next) => {
     if (error.code === 11000) return res.status(409).json({ message: 'An account with this email already exists.' });
