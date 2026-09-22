@@ -1,3 +1,6 @@
+import { SCAN_TERMS } from '../../client/src/data/scanTerms.js';
+const consentFields = { tosAccepted: true, termsVersion: SCAN_TERMS.version };
+const consents = { create: async fields => ({ ...fields, _id: '000000000000000000000002' }) };
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../src/app.js';
@@ -10,7 +13,7 @@ test('upstream ML limits are returned as retryable 429 responses', async () => {
   try {
     globalThis.fetch = async () => ({ status: 429, ok: false });
     const response = { set(key, value) { retry = value; }, status(value) { status = value; return this; }, json(value) { body = value; } };
-    await scanController('http://localhost:8000')({ body: { text: 'test' } }, response);
+    await scanController('http://localhost:8000', undefined, undefined, consents)({ body: { ...consentFields, text: 'test' } }, response);
     assert.equal(status, 429); assert.equal(retry, '60'); assert.match(body.message, /request limit reached/);
   } finally { globalThis.fetch = original; }
 });

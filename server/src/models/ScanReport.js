@@ -5,21 +5,26 @@ export function createScanRepository(collectionName = 'scan_reports') {
     source: { type: String, enum: ['account', 'guest'], default: 'account' },
     message: { type: String, maxlength: 5000 },
     tosAcknowledged: { type: Boolean, default: false },
+    consentId: { type: mongoose.Schema.Types.ObjectId, ref: 'ScanConsent', default: null },
+    expiresAt: { type: Date, default: null },
+    retentionVersion: String,
     title: { type: String, required: true, maxlength: 80 },
     result: { type: mongoose.Schema.Types.Mixed, required: true },
   }, { timestamps: true, bufferCommands: false });
   schema.index({ userId: 1, createdAt: -1 });
   schema.index({ createdAt: -1 });
+  schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   const Scan = mongoose.models.ScanReport || mongoose.model('ScanReport', schema, collectionName);
   return {
     init: () => Scan.init(),
     create: fields => Scan.create(fields),
-    list: (userId, limit) => Scan.find({ userId }).sort({ createdAt: -1 }).limit(limit).lean(),
+    findOwned: (id, userId) => Scan.findOne({ _id: id, userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).lean(),
+    list: (userId, limit) => Scan.find({ userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).sort({ createdAt: -1 }).limit(limit).lean(),
     async stats(userId, since) {
       const match = userId ? { userId: new mongoose.Types.ObjectId(userId) } : { $or: [{ userId: { $type: 'objectId' } }, { source: 'guest' }] };
       const countWhere = prediction => ({ $sum: { $cond: [{ $eq: ['$result.prediction', prediction] }, 1, 0] } });
       const [data] = await Scan.aggregate([
-        { $match: match },
+        { $match: { $and: [match, { $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }] } },
         { $facet: {
           totals: [{ $group: { _id: null, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }],
           accounts: [{ $match: { userId: { $type: 'objectId' } } }, { $group: { _id: '$userId' } }, { $count: 'count' }],

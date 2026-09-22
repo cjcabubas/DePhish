@@ -17,7 +17,7 @@ Vite forwards `/api/scans`, `/api/links`, and `/api/auth` to Express on port 500
 
 For deployment, serve the frontend and Express API routes on the same origin using a reverse proxy. An optional `VITE_SCAN_API_URL` overrides the scan origin; cross-origin deployments require corresponding server configuration. Never put secrets in `VITE_` variables: they are public browser configuration.
 
-Signed-in history and dashboard statistics are loaded from the authenticated Express API. Guest reports are persisted server-side when MongoDB is available, while browser history stays in page memory and resets on refresh or account changes. Dashboards show all-time totals, assessment breakdowns, 30-day UTC activity, and common indicators. Users see their own scans; admins see aggregates including guest reports. Agree to ToS opens an empty dialog with a checkbox and Agree/Cancel buttons; checking the box and selecting Agree enables scanning. This remains a placeholder, with no legal text or server-side agreement enforcement. Community report submission and review remain in development.
+Signed-in history and dashboard statistics are loaded from the authenticated Express API. Guest reports are persisted server-side when MongoDB is available, while browser history stays in page memory and resets on refresh or account changes. Dashboards show all-time totals, assessment breakdowns, 30-day UTC activity, and common indicators. Users see their own scans; admins see aggregates including guest reports. The consent dialog displays versioned terms; acceptance is checked and recorded by the server before analysis.
 
 Successful scans keep the loading state visible for at least 1.2 seconds. Network work starts immediately; slow scans have no additional delay and errors appear promptly. The loading animation respects reduced-motion preferences. Rate-limit responses show a readable wait-and-retry message.
 
@@ -29,3 +29,15 @@ Scan results use plain-language verdicts and indicator names, short explanations
 npm test
 npm run build
 ```
+
+## Independent scan results
+
+The scanner sends `type: auto` and displays model phishing probability separately from the combined policy risk score and link points. Rule findings are observations, not extra confidence. Missing analyzer evidence is explicitly marked unavailable. Message labels support Email, SMS, URL, and Message (unknown). Existing history responses remain compatible. Saved reports use backend redaction; original text is used only during the current analysis.
+
+## Report Scam
+
+Users can submit messages, suspicious links, sender/scammer emails, phone numbers, and extra details. `Report this` on a current result or saved history result opens the reporting flow. Saved scan references are checked against account ownership by the server. Reports are analyzed again and saved Pending, separately from scan history. Signed-in users track Pending, Verified, and Rejected decisions through Report → My reports; guests receive a submission receipt.
+
+Admins use **Scan Reports** to filter by status, inspect redacted content and scanner findings, select individual threat candidates, and Verify or Reject with a review note. Selected sender emails require a spoofing-review confirmation. Reopening returns a report to Pending and retracts its contributions. Status history records admin decisions. **Threat Indicators** lists only approved indicators backed by currently verified reports.
+
+The Vite proxy sends `/api/reports` to Express. Restart Vite after proxy configuration changes. The workflow uses existing cookie sessions and JSON/client-header checks; the admin UI does not replace server-side role enforcement.

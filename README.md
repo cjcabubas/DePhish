@@ -27,7 +27,7 @@ npm --prefix client ci
 
 For accounts and saved history, configure `server/.env` as described below. No root npm install is required.
 
-For a scanning-only setup, no `.env` file is required. Accounts and database persistence require both `MONGODB_URI` and `SESSION_SECRET`; see the [Express and Atlas setup](server/README.md#configure-mongodb-atlas). The trained model is included, so no dataset download or retraining is needed.
+Scanning requires database-backed consent storage. Accounts and database persistence require both `MONGODB_URI` and `SESSION_SECRET`; see the [Express and Atlas setup](server/README.md#configure-mongodb-atlas). The trained model is included, so no dataset download or retraining is needed.
 
 ### Running services separately
 
@@ -48,7 +48,7 @@ cd server
 npm start
 ```
 
-For accounts, copy `server/.env.example` to `server/.env` on a fresh checkout and configure Atlas and a session secret. Do not overwrite an existing `.env`. Scanning works without Atlas.
+For accounts, copy `server/.env.example` to `server/.env` on a fresh checkout and configure Atlas and a session secret. Do not overwrite an existing `.env`. Scanning requires Atlas for consent storage.
 
 **3. Frontend**
 
@@ -63,8 +63,8 @@ Open the URL printed by Vite. Keep all three services running. Restart Express a
 
 - Frontend: normally `http://localhost:5173`; use the address printed by Vite.
 - ML: open `http://127.0.0.1:8000/health` and check that `model_loaded` is `true`.
-- Express: open `http://127.0.0.1:5000/health`. HTTP 200 with `ready: true` means accounts are available. HTTP 503 is expected when the database is unconfigured or unavailable; scanning can still work.
-- In the frontend, paste a message, acknowledge the current ToS placeholder, and run a scan to verify the full path through all three services.
+- Express: open `http://127.0.0.1:5000/health`. HTTP 200 with `ready: true` means accounts are available. HTTP 503 is expected when the database is unconfigured or unavailable; scans require working consent storage.
+- In the frontend, paste a message, accept the current Scan Consent and Data Processing Terms, and run a scan to verify the full path through all three services.
 
 If startup reports an occupied port, stop the previous DePhish instance before restarting. Vite may choose another port when 5173 is busy; if you use that port, add its exact browser origin (for example, `http://localhost:5174`) to `CLIENT_ORIGINS` in `server/.env` and restart Express so account requests are allowed. If you change the Express port, also set `AUTH_API_PROXY_TARGET` in `client/.env` and restart Vite. The root launcher uses ML port 8000.
 
@@ -80,9 +80,9 @@ If PowerShell blocks `npm.ps1`, use `npm.cmd` in place of `npm`. If ML fails to 
 - Signup, login/logout, and MongoDB sessions when Atlas is configured.
 - All completed scan reports, including guest messages, are saved when MongoDB is available. Account history remains private; guest results remain revisitable only during the page session.
 - Full assessed results, including detailed evidence, can be revisited from scan history.
-- Final phishing scans record deduplicated links, email addresses, and recognized phone numbers in an admin-only scanner-flagged registry when MongoDB is configured.
+- Report Scam accepts existing scans or manual submissions, analyzes them, and saves them as Pending. Admins Verify, Reject, or reopen reports; only individually approved indicators from verified reports appear under Threat Indicators.
 
-Account and admin dashboards use live saved-scan totals, assessment breakdowns, 30-day UTC activity, and common indicators. Admin statistics contain aggregate data across accounts; regular users see only their own data. Report submission/review and learning modules are not implemented. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
+Account and admin dashboards use live saved-scan totals, assessment breakdowns, 30-day UTC activity, and common indicators. Admin statistics contain aggregate data across accounts; regular users see only their own data. Community reports, admin review, and Learn modules are implemented. Scan History, Reports, and verified Threat Indicators remain separate. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
 
 ## Project guides
 

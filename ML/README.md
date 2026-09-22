@@ -19,13 +19,15 @@ Keep the pinned scikit-learn version for artifact compatibility. Restart after c
 | --- | --- | --- |
 | GET | `/health` | Model readiness |
 | GET | `/api/model/info` | Active model metadata |
-| POST | `/api/analyze` | Classify one message |
+| POST | `/api/classify` | Model-only probability, version, and learned contributions |
+| POST | `/api/indicators` | Independent original-text observations; no model required |
+| POST | `/api/analyze` | Legacy combined message analysis |
 | POST | `/api/predict` | Alias for analyze |
 | POST | `/api/batch-predict` | Classify up to 100 messages |
 
 Single requests accept `text` (1–5,000 characters) and `type` (`email`, `sms`, or `auto`). Batch requests use a `messages` array. Swagger and ReDoc are disabled.
 
-This service returns the message-model score, probabilities, pattern indicators, and extracted URLs. Express adds live link evidence through `/api/scans/analyze`, which is the frontend's scan endpoint.
+Express uses `/api/classify` and `/api/indicators` independently and performs canonical artifact extraction and URL inspection itself. `/api/indicators` accepts a `has_url` boolean from that extractor. The legacy `/api/analyze` and batch endpoints retain their old combined response for compatibility. Keep the ML service private; the frontend uses the consent-gated `/api/scans/analyze` route.
 
 ### Detailed evidence
 
@@ -43,6 +45,7 @@ V2 improved existing test-set binary F1 from 96.76% to 98.15%. This is not an in
 
 See [model comparison, rollback, and link scoring](MODEL_UPGRADE.md) for details. Local datasets and generated reports are excluded from Git.
 
+- `src/training/upgrade_model_v3.py`: trains a versioned original-case structured-feature candidate; `--promote` switches metadata only when fixed evaluation checks pass. The v2 transformer is never modified. Evaluation reuses the existing test set and is not a fresh field benchmark.
 - `src/training/upgrade_model.py`: generate a v2 candidate and comparison without replacing the active artifact.
 - `src/training/evaluate.py`: evaluate the active model.
 - `src/training/audit_scanner.py`: preserve the legacy v1 scoring audit.
@@ -54,3 +57,7 @@ Direct `/api/` access is limited to 120 requests per minute per connecting IP, w
 ```powershell
 .\.venv\Scripts\python.exe -m pytest ML/tests -q
 ```
+
+### Original-case candidate result
+
+The 2026-09-20 v3 candidate retained binary F1 at 0.981475, reduced missed high-risk cases from 61 to 58, and increased warning-level false positives from 32 to 34. It failed the fixed promotion gate, so model v2.0.0 remains active. Independent indicator analysis now reports original-case formatting correctly. The shipped v2 structured uppercase feature remains frozen until a validated replacement is promoted. The full local comparison is in `reports/model_upgrade_v3/comparison.json`.

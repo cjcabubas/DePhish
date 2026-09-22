@@ -16,7 +16,7 @@ test('dashboard requests use private endpoints and never replace errors with dem
       globalThis.fetch = async () => ({ status, ok: false });
       await assert.rejects(api.dashboard.stats(), message);
     }
-    assert.equal('reports' in api, false);
+    assert.equal(typeof api.reports.list, 'function');
     globalThis.fetch = async () => ({ status: 401, ok: false });
     await assert.rejects(api.scans.list({ authenticated: true }), /session has expired/);
   } finally { globalThis.fetch = original; }

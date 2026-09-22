@@ -26,9 +26,9 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` selects the scan-history collection (default `scan_reports`). It does not rename the users collection.
 5. Restart Express. `/health` returns HTTP 200 with `ready: true` when accounts are available.
 
-Users and sessions use the `users` and `sessions` collections. All completed scans save the full message, combined result, and short title in `scan_reports`. Guests use a null userId and `source: guest`; signed-in scans retain their authenticated owner. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
+Users and sessions use the `users` and `sessions` collections. Completed scans save a redacted message, minimized assessment, and redacted title in `scan_reports`. Guests use a null userId and `source: guest`; signed-in scans retain their authenticated owner. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
-If Atlas is missing or fails at startup, account routes return 503 while scanning stays available. Resolve the connection issue and restart to enable accounts.
+If Atlas is missing or fails at startup, account routes return 503 and scans stop because consent cannot be recorded. Resolve the connection issue and restart.
 
 ## Routes
 
@@ -37,7 +37,7 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 | GET | `/api/scans` | Current user history, limit 1–100 |
 | GET | `/api/scans/stats` | Current user's all-time totals, common indicators, and 30-day UTC activity |
 | GET | `/api/scans/admin/stats` | Admin-only aggregate saved-scan statistics across accounts |
-| GET | `/api/scans/admin/identifiers` | Admin-only scanner-flagged identifiers, limit 1–100 |
+| GET | `/api/scans/admin/identifiers` | Legacy scanner observations (not verified threats), limit 1–100 |
 | POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
 | POST | `/api/links/check` | Inspect one public URL |
 | POST | `/api/auth/signup` | Register and start a session |
@@ -46,7 +46,7 @@ If Atlas is missing or fails at startup, account routes return 503 while scannin
 | POST | `/api/auth/logout` | Destroy the session |
 | GET | `/health` | Account readiness |
 
-Scans accept `{ "text": "message or URL", "type": "email" }`; type can also be `sms` or `auto`. `ML_API_URL` selects the upstream ML service. Link checks require outbound DNS/HTTPS access but no Atlas or API key. See the [risk policy](../ML/MODEL_UPGRADE.md).
+Scans accept `{ "text": "message or URL", "type": "auto", "tosAccepted": true, "termsVersion": "1.0" }`; type can also be `email`, `sms`, `url`, or `unknown`. Auto-detection is a structural heuristic, not a verified channel. `ML_API_URL` selects the upstream ML service. Link checks require outbound DNS/HTTPS access but no Atlas or API key. See the [risk policy](../ML/MODEL_UPGRADE.md).
 
 Link inspection reports specific `destination.failure_code` values for DNS/connection failures, timeouts, certificate failures, invalid or missing redirect destinations, redirect loops/limits, restricted access, and remote rate limits. Invalid domain labels are rejected before inspection. Registration lookup failures retain completed destination evidence. HTTP 401/403/429 and unsupported HEAD responses (405/501) leave inspection incomplete and add no broken-link points; these are inspection limitations rather than evidence of phishing. Scan results show the reason beside the affected link.
 
@@ -60,17 +60,50 @@ Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requ
 
 Admin totals include account-owned and explicitly marked guest reports, independent of the history page limit. Personal dashboards include only the authenticated owner's scans. Legacy unowned records without a guest source remain excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
 
-Email verification, password reset, and community-report APIs are not implemented.
+Email verification and password reset are not implemented.
 
-## Scanner-flagged identifier registry
+## Community reports and admin decisions
 
-The scanner UI includes an empty ToS placeholder and requires its checkbox before scanning. Reports record `tosAcknowledged` from that checkbox. This is a placeholder acknowledgement without published terms or a terms version; it does not represent acceptance of a completed legal document. Direct API clients are not gated by the placeholder checkbox.
+Scan History, Reports, and Threat Indicators use separate collections:
 
-Final `Phishing` scans automatically upsert links, email addresses, and recognized phone numbers into `flagged_identifiers`, including anonymous scans when MongoDB is ready. `Suspicious` and `Legitimate` scans do not write. A unique key deduplicates identifiers; records contain first/last seen times, detection counts, and the latest scores, indicator categories, model/scoring versions, and optional account/history references. Full message text is not copied into this collection. Up to 30 unique identifiers are recorded per scan.
+- `scan_reports` (or `COLLECTION_NAME`): automated scan history. Scans no longer publish identifiers.
+- `reports`: community submissions, redacted content, scanner evidence, candidate indicators, and admin decisions.
+- `threat_indicators`: only individually approved candidates from currently verified reports. Legacy `flagged_identifiers` observations are not imported or treated as verified threats.
 
-URL identity includes scheme, hostname, and path, excluding embedded credentials, query parameters, and fragments. Email addresses are lowercased. Philippine mobile numbers normalize to +63; explicitly international numbers retain their dialing prefix. Extraction is conservative and does not validate ownership or global phone-number validity.
+`POST /api/reports` accepts `message`, `suspiciousUrl`, `senderEmail`, `phone`, `details`, and optional `sourceScanId`, plus `tosAccepted: true` and the current `termsVersion`. At least one message/link/email/phone is required. Combined input is limited to 5,000 characters. An existing scan reference requires authentication and is resolved against that user's unexpired saved scans; client-supplied analysis and status are ignored. Current guest scans can be reported by submitting their original message again.
 
-`scanner_flagged` means an identifier appeared in a message assessed as phishing. Messages can mention innocent addresses, official links, or recipients; the flag does not establish that each identifier is malicious. The registry is restricted to admins, and does not automatically change future scan scores. Review states are reserved in the schema; a review workflow is not implemented. Database write failures return a registry-status notice while retaining the scan result, and partial writes may have succeeded. The existing Atlas configuration and session secret are required to initialize persistence.
+Consent is recorded before analysis. The existing independent scanner analyzes each submission again, then saves its phishing type, risk score, patterns, link evidence, and review candidates with `status: pending`. Analysis or persistence failure returns an error, not a successful pending receipt. Report submissions never create scan-history records or publish threat indicators.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/reports?status=pending&page=1` | Signed-in user's own reports |
+| POST | `/api/reports` | Submit and analyze a report; guests allowed |
+| GET | `/api/reports/admin?status=pending&page=1` | Admin review queue |
+| PATCH | `/api/reports/:id/status` | Admin Verify, Reject, or reopen as Pending |
+| GET | `/api/reports/threat-indicators?page=1` | Admin-only verified indicators |
+
+Lists support pending/verified/rejected status filters and 20 rows per page. Status updates require `{ status, revision, indicatorIds, note, emailReviewed }`. IDs must refer to the report's own candidates. Only `verified` can select indicators; verification can also approve the report without publishing any. Sender emails require explicit spoofing review and a decision note. Ordinary recipient addresses are not extracted as sender candidates. Passwords, OTPs, keys, and other credentials are never valid indicator types.
+
+Admin status updates and indicator publication/retraction run in a MongoDB transaction, requiring Atlas or a replica set. There is no partial-write fallback. Stale revisions return 409. Rejecting or reopening a report removes its indicator contributions; other verified reports' contributions remain. The latest 50 status changes retain the reviewer, timestamp, redacted note, selected candidate IDs, and email-review confirmation.
+
+Reports and their indicator contributions expire 30 days after submission, regardless of status. TTL deletion is asynchronous, so reads also exclude expired records. Re-review does not extend retention. Saved messages and evidence mask personal contacts and recognized secrets. Designated scam contacts and sender-header candidates remain readable only in the private report/review workflow. URL candidates preserve safe paths but remove embedded credentials, query strings, fragments, and recognized token-like path data. A domain is approved separately from a URL, because one malicious page does not prove the entire host is malicious. Pattern-based redaction is not exhaustive; the form asks users to remove unnecessary sensitive information.
+
+The server records consent in `scan_consents` using the exact shared terms, version, timestamp, and hash. Missing consent returns 400; a stale version returns 409. Terms remain in `client/src/data/scanTerms.js`; update their version when changing their text. The privacy contact and account/privacy-request deletion workflows still require completion. Existing historical data is not rewritten.
+
+## Independent scan pipeline
+
+`scanController` validates consent, calls `scanOrchestrator`, then calls `scanPersistenceService`.
+
+- `artifactService`: original/normalized text, canonical URLs/domains/emails/phones/IPs, credential flags, and message type.
+- `analyzerClient`: independent Python `/api/classify` and `/api/indicators` requests.
+- `urlAnalysisService`: starts bounded link inspection immediately from canonical extracted URLs.
+- `riskService`: versioned decision policy. It retains model probability × 100 plus the highest link score (maximum 40), capped at 100. No unvalidated indicator/entity weights are introduced.
+- `explanationService`: assembles evidence after the final assessment.
+- `retentionService` and `scanPersistenceService`: redact automated scan history and apply expiry. Community reports use a separate repository and admin decision workflow.
+
+The response separates `textAnalysis`, `indicatorAnalysis`, `urlAnalysis`, `entityAnalysis`, `assessment`, and `explanation`. Model probability/confidence are not the combined risk index. Compatibility fields such as `risk_score` and `prediction` remain for history/dashboard readers. An indicator outage is marked unavailable, not reported as zero findings; missing link data adds no points. A failed or invalid model response prevents a complete assessment. All three analyzers begin independently of any verdict.
+
+The saved model retains its own frozen training transforms, including internal lexical URL extraction. Changing those transforms requires retraining, so the canonical artifact extractor replaces duplicate live-inspection and persistence extraction, not the shipped model's learned input semantics.
 
 ## Tests
 
@@ -81,3 +114,26 @@ npm test
 ```
 
 Tests cover account contracts, session handling, validation, link safety, and combined risk decisions. Account tests use isolated in-memory substitutes; they do not create Atlas users.
+
+Optional integration checks run separately from the default suite:
+
+```powershell
+$env:ML_INTEGRATION_URL='http://127.0.0.1:8000'
+node --test tests/pipeline.integration.test.js
+Remove-Item Env:ML_INTEGRATION_URL
+$env:DEPHISH_DATABASE_TEST='1'
+node --test tests/database.integration.test.js
+Remove-Item Env:DEPHISH_DATABASE_TEST
+```
+
+The database test uses unique `__dephish_verify_*` collections and drops only those collections afterward. It never touches production scan, consent, user, or registry records. The ML integration test uses in-memory persistence and the reserved `.invalid` suffix for link evidence.
+
+Report transaction integration check (temporary isolated collections only):
+
+```powershell
+$env:DEPHISH_REPORT_DATABASE_TEST='1'
+node --test tests/reportDatabase.integration.test.js
+Remove-Item Env:DEPHISH_REPORT_DATABASE_TEST
+```
+
+The test covers publication, retraction, multiple supporting reports, stale revisions, concurrent admin decisions, rollback, and expiry without touching application records.

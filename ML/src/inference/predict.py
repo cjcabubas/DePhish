@@ -76,6 +76,17 @@ class PhishingDetector:
         inputs = self.pipeline.transform(texts) if self.pipeline is not None else texts
         return self.model.predict_proba(inputs)
 
+    def classify(self, original_text):
+        """Model-only contract. The serialized estimator owns its frozen normalization."""
+        if not original_text or not original_text.strip():
+            raise ValueError('Message must contain non-whitespace text.')
+        probability = float(self.predict_probabilities([original_text])[0, 1])
+        return {**score_prediction(probability),
+                'probabilities': {'phishing': probability, 'legitimate': 1 - probability},
+                'model_version': self.metadata.get('version', '1.0.0'),
+                'model_limitations': self.metadata.get('limitations', []),
+                'model_explanation': explain_model(self.model, original_text, probability)}
+
     def analyze(self, text: str, message_type: str = "auto") -> Dict[str, Any]:
         """
         Analyzes a single email or SMS message.

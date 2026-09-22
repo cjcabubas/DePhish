@@ -4,10 +4,10 @@ import { scanController } from '../controllers/scanController.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { dashboardController } from '../controllers/dashboardController.js';
 import { historyController } from '../controllers/historyController.js';
-export function scanRoutes(mlUrl, { users, scans, identifiers, origins }) {
+export function scanRoutes(mlUrl, { users, scans, identifiers, consents, pseudonymizationKey, origins }) {
   const router = Router();
   let active = 0;
-  const scan = scanController(mlUrl, scans, identifiers);
+  const scan = scanController(mlUrl, scans, identifiers, consents, pseudonymizationKey);
   router.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const reads = apiRateLimit({ limit: 30, message: 'Too many history or dashboard requests. Please try again in a minute.' });
   router.get(['/', '/stats', '/admin/stats', '/admin/identifiers'], reads);

@@ -2,8 +2,9 @@ import { authApi } from './authApi.js';
 
 const baseUrl = (import.meta.env?.VITE_SCAN_API_URL || '').replace(/\/$/, '');
 const scans = [];
+export const messageTypeLabel = type => ({ email: 'Email', sms: 'SMS', url: 'URL', unknown: 'Message' }[type] || 'Message');
 
-export async function analyzeMessage(text, type = 'email', { tosAccepted } = {}) {
+export async function analyzeMessage(text, type = 'auto', { tosAccepted, termsVersion } = {}) {
   if (!text.trim()) throw new Error('Paste a message before scanning.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 50000);
@@ -12,10 +13,14 @@ export async function analyzeMessage(text, type = 'email', { tosAccepted } = {})
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' },
       credentials: 'same-origin',
-      body: JSON.stringify({ text, type, ...(typeof tosAccepted === 'boolean' ? { tosAccepted } : {}) }),
+      body: JSON.stringify({ text, type, ...(typeof tosAccepted === 'boolean' ? { tosAccepted, termsVersion } : {}) }),
       signal: controller.signal,
     });
     if (!response.ok) {
+      if ([400, 409, 503].includes(response.status)) {
+        const error = await response.json?.().catch(() => null);
+        if (error?.message) throw new Error(error.message);
+      }
       if (response.status === 429) throw new Error('Too many scans. Please wait a minute before trying again.');
       if ([502, 504].includes(response.status)) throw new Error('Cannot reach the scanning service. Please check that it is running and try again.');
       throw new Error(response.status === 503
@@ -29,7 +34,7 @@ export async function analyzeMessage(text, type = 'email', { tosAccepted } = {})
     }
     scans.unshift({
       id: crypto.randomUUID(), title: text.trim().split('\n')[0].slice(0, 80),
-      type: result.message_type === 'sms' ? 'SMS' : 'Email',
+      type: messageTypeLabel(result.message_type),
       date: new Date().toLocaleDateString(), score: result.risk_score,
       status: result.prediction === 'Legitimate' ? 'Low risk' : 'Suspicious',
       summary: `${result.prediction} · ${result.risk_level}. ${result.detected_indicators.map(i => i.title).join('; ')}`,
@@ -56,7 +61,7 @@ async function listScans({ authenticated = false } = {}) {
   const data = await response.json();
   return data.scans.map(row => ({
     id: row.id, title: row.title, date: new Date(row.created_at).toLocaleDateString(),
-    type: row.result.message_type === 'sms' ? 'SMS' : 'Email', score: row.result.risk_score,
+    type: messageTypeLabel(row.result.message_type), score: row.result.risk_score,
     status: row.result.prediction === 'Legitimate' ? 'Low risk' : 'Suspicious',
     summary: `${row.result.prediction} · ${row.result.risk_level}`, result: row.result,
   }));
@@ -71,7 +76,30 @@ async function dashboardStats(admin = false) {
   return response.json();
 }
 
+async function reportRequest(path = '', { method = 'GET', body } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  try {
+    const response = await fetch(`${baseUrl}/api/reports${path}`, {
+      method, credentials: 'same-origin', signal: controller.signal,
+      ...(body ? { headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' }, body: JSON.stringify(body) } : {}),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.message || 'Reports are unavailable. Please try again.');
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('The request timed out. Refresh your reports before retrying.');
+    throw error;
+  } finally { clearTimeout(timeout); }
+}
+
 export const api = {
+  reports: {
+    submit: body => reportRequest('', { method: 'POST', body }),
+    list: ({ admin = false, status = '', page = 1 } = {}) => reportRequest(`${admin ? '/admin' : ''}?status=${encodeURIComponent(status)}&page=${page}`),
+    review: (id, body) => reportRequest(`/${encodeURIComponent(id)}/status`, { method: 'PATCH', body }),
+    threats: (page = 1) => reportRequest(`/threat-indicators?page=${page}`),
+  },
   auth: authApi,
   dashboard: { stats: dashboardStats },
   scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: listScans, get: async id => (await listScans()).find(scan => scan.id === id) },

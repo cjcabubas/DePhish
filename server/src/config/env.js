@@ -13,6 +13,7 @@ export function readConfig(env = process.env) {
     origins: (env.CLIENT_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173').split(',').map(s => s.trim()).filter(Boolean),
   };
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error('PORT must be a valid port.');
+  if (['reports', 'threat_indicators'].includes(config.scanCollectionName)) throw new Error('COLLECTION_NAME must keep scan history separate from reports and threat_indicators.');
   if (config.sessionSecret && config.sessionSecret.length < 32) throw new Error('SESSION_SECRET must contain at least 32 characters.');
   if (config.mongoUri && !/^mongodb(?:\+srv)?:\/\//.test(config.mongoUri)) throw new Error('MONGODB_URI must be a MongoDB connection string.');
   if (config.origins.some(origin => { try { return new URL(origin).origin !== origin; } catch { return true; } })) throw new Error('CLIENT_ORIGINS must contain exact origins.');

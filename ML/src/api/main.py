@@ -18,6 +18,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.inference.predict import PhishingDetector
+from src.inference.indicators import analyze_indicators
 from src.api.rate_limit import install_rate_limit
 
 from contextlib import asynccontextmanager
@@ -145,6 +146,23 @@ class BatchAnalyzeResponse(BaseModel):
 
 
 # API Endpoints
+class IndicatorRequest(AnalyzeRequest):
+    has_url: bool = False
+    normalized_text: Optional[str] = Field(None, max_length=20000)
+
+
+@app.post('/api/classify', tags=['Inference'])
+def classify_text(req: AnalyzeRequest):
+    """Model-only endpoint used by the scan orchestrator."""
+    return get_detector().classify(req.text)
+
+
+@app.post('/api/indicators', tags=['Inference'])
+def inspect_indicators(req: IndicatorRequest):
+    """Independent of model availability; URL presence comes from the artifact extractor."""
+    return analyze_indicators(req.text, has_url=req.has_url, normalized_text=req.normalized_text)
+
+
 @app.get("/health", tags=["System"])
 def health_check():
     """Health check endpoint confirming service status and model readiness."""
