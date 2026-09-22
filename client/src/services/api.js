@@ -103,4 +103,22 @@ export const api = {
   auth: authApi,
   dashboard: { stats: dashboardStats },
   scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: listScans, get: async id => (await listScans()).find(scan => scan.id === id) },
+  learn: {
+    getProgress: async () => {
+      const res = await fetch(`${baseUrl}/api/learn/progress`, { credentials: 'same-origin' });
+      if (res.status === 401) return null; // not logged in — use local state only
+      if (!res.ok) throw new Error('Could not load learning progress.');
+      return (await res.json()).modules ?? [];
+    },
+    saveProgress: async (modules) => {
+      const res = await fetch(`${baseUrl}/api/learn/progress`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modules }),
+      });
+      if (res.status === 401) return null; // not logged in — silently skip
+      if (!res.ok) throw new Error('Could not save learning progress.');
+      return (await res.json()).modules ?? [];
+    },
+  },
 };
