@@ -1,6 +1,6 @@
 import { authApi } from './authApi.js';
 
-const baseUrl = (import.meta.env?.VITE_SCAN_API_URL || '').replace(/\/$/, '');
+const baseUrl = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
 const scans = [];
 export const messageTypeLabel = type => ({ email: 'Email', sms: 'SMS', url: 'URL', unknown: 'Message' }[type] || 'Message');
 
@@ -12,7 +12,7 @@ export async function analyzeMessage(text, type = 'auto', { tosAccepted, termsVe
     const response = await fetch(`${baseUrl}/api/scans/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' },
-      credentials: 'same-origin',
+      credentials: 'include',
       body: JSON.stringify({ text, type, ...(typeof tosAccepted === 'boolean' ? { tosAccepted, termsVersion } : {}) }),
       signal: controller.signal,
     });
@@ -51,7 +51,7 @@ export async function analyzeMessage(text, type = 'auto', { tosAccepted, termsVe
 }
 
 async function listScans({ authenticated = false } = {}) {
-  const response = await fetch(`${baseUrl}/api/scans`, { credentials: 'same-origin' });
+  const response = await fetch(`${baseUrl}/api/scans`, { credentials: 'include' });
   if (response.status === 401) {
     if (authenticated) throw new Error('Your session has expired. Please log in again.');
     return [...scans];
@@ -68,7 +68,7 @@ async function listScans({ authenticated = false } = {}) {
 }
 
 async function dashboardStats(admin = false) {
-  const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats`, { credentials: 'same-origin' });
+  const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats`, { credentials: 'include' });
   if (response.status === 401) throw new Error('Your session has expired. Please log in again.');
   if (response.status === 403) throw new Error('You do not have access to this dashboard.');
   if (response.status === 429) throw new Error('Too many dashboard requests. Please wait a minute before trying again.');
@@ -81,7 +81,7 @@ async function reportRequest(path = '', { method = 'GET', body } = {}) {
   const timeout = setTimeout(() => controller.abort(), 60000);
   try {
     const response = await fetch(`${baseUrl}/api/reports${path}`, {
-      method, credentials: 'same-origin', signal: controller.signal,
+      method, credentials: 'include', signal: controller.signal,
       ...(body ? { headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' }, body: JSON.stringify(body) } : {}),
     });
     const data = await response.json().catch(() => null);
@@ -105,14 +105,14 @@ export const api = {
   scans: { clear: () => { scans.length = 0; }, analyze: analyzeMessage, list: listScans, get: async id => (await listScans()).find(scan => scan.id === id) },
   learn: {
     getProgress: async () => {
-      const res = await fetch(`${baseUrl}/api/learn/progress`, { credentials: 'same-origin' });
-      if (res.status === 401) return null; // not logged in — use local state only
+      const res = await fetch(`${baseUrl}/api/learn/progress`, { credentials: 'include' });
+      if (res.status === 401) return null;
       if (!res.ok) throw new Error('Could not load learning progress.');
       return (await res.json()).modules ?? [];
     },
     saveProgress: async (modules) => {
       const res = await fetch(`${baseUrl}/api/learn/progress`, {
-        method: 'POST', credentials: 'same-origin',
+        method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modules }),
       });

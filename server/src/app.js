@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { scanRoutes } from './routes/scanRoutes.js';
 import helmet from 'helmet';
 import { linkRoutes } from './routes/linkRoutes.js';
@@ -13,6 +14,13 @@ export function createApp({ config, users, store, scans, identifiers, consents, 
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
+  // CORS must come before helmet so preflight responses include the right headers.
+  app.use(cors({
+    origin: config.origins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-DePhish-Client'],
+  }));
   app.use(helmet());
   app.use('/api', apiRateLimit({ limit: apiLimit }));
   app.use(express.json({ limit: '16kb' }));
@@ -29,7 +37,9 @@ export function createApp({ config, users, store, scans, identifiers, consents, 
     next();
   });
   if (store) {
-    const cookie = { httpOnly: true, secure: config.production, sameSite: 'lax', path: '/api', maxAge: 7 * 24 * 60 * 60 * 1000 };
+    // sameSite 'none' is required for cross-site cookies (Vercel frontend → Render backend).
+    // 'none' requires secure:true which is enforced in production.
+    const cookie = { httpOnly: true, secure: config.production, sameSite: config.production ? 'none' : 'lax', path: '/api', maxAge: 7 * 24 * 60 * 60 * 1000 };
     app.use(['/api/auth', '/api/scans', '/api/reports', '/api/learn'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
     app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie), users, authLimit));
   }
