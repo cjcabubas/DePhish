@@ -28,8 +28,7 @@ const schema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   modules: { type: [moduleProgressSchema], default: [] },
 }, { timestamps: true, bufferCommands: false });
-
-schema.index({ userId: 1 });
+// userId unique:true above already creates the index — no schema.index() needed.
 
 const LearningProgress = mongoose.models.LearningProgress
   || mongoose.model('LearningProgress', schema, 'learning_progress');
