@@ -1,8 +1,10 @@
+const apiBase = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
+
 export async function authRequest(path, payload) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(`/api/auth/${path}`, {
+    const response = await fetch(`${apiBase}/api/auth/${path}`, {
       method: payload === undefined ? 'GET' : 'POST', credentials: 'include',
       headers: payload === undefined ? {} : { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' },
       ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: controller.signal,
