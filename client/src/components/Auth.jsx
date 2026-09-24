@@ -29,7 +29,7 @@ export function Auth({ mode, setMode, submit }) {
     </button>
     <nav className="authNavigation" aria-label="Authentication navigation">
       <button type="button" disabled={busy} onClick={() => setMode(null)}><ArrowLeft size={16}/>Back to scanner</button>
-      {(signup || recovery) && <button type="button" disabled={busy} onClick={() => setMode('login')}><LogIn size={16}/>Back to log in</button>}
+      {recovery && <button type="button" disabled={busy} onClick={() => setMode('login')}><LogIn size={16}/>Back to log in</button>}
     </nav>
     <section className="authCard" aria-labelledby="authTitle">
       <span className="authIcon">{recovery ? <LockKeyhole/> : signup ? <UserPlus/> : <LogIn/>}</span>
