@@ -114,3 +114,13 @@
 .quizResult{display:flex;flex-direction:column;gap:16px;padding:24px;background:var(--pale);border-radius:12px}.quizScore{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:700}.quizScore.pass{color:#2d9c6e}.quizScore.fail{color:#b94040}
 @media(max-width:640px){.quizCard{padding:20px}.quizOption{padding:10px 12px}}
 .technicalSection{border-top:1px solid var(--line);margin-top:18px;padding-top:16px;overflow-wrap:anywhere}.technicalSection h3{font-size:15px;margin:0 0 12px}.technicalLink{margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}.technicalLink h4{font-size:13px;margin:0}.technicalLink h5{font-size:13px;margin:14px 0 8px}.domainInformation{border-left:3px solid var(--line);padding-left:14px;margin-top:18px}.technicalLink dd{min-width:0;overflow-wrap:anywhere}@media(max-width:720px){.technicalLink .linkFacts dl{grid-template-columns:1fr;gap:4px}.technicalLink .linkFacts dd{margin-bottom:8px}}
+
+/* Authentication navigation and frontend password recovery */
+.authNavigation{max-width:450px;margin:0 auto 16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.authNavigation button,.authForgot{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#087c72;font:700 13px 'DM Sans';cursor:pointer}
+.authForgot{justify-self:end;border:0;padding:4px 0;min-height:32px;margin-top:-8px;background:none}
+.authNavigation button:hover:not(:disabled),.authForgot:hover:not(:disabled){color:#075e57;background:#eff9f8}
+.authPage button:focus-visible{outline:2px solid #0a9386;outline-offset:3px}
+.authPage button:disabled{opacity:.6;cursor:not-allowed}
+.authCard .authNotice{padding:12px 14px;border:1px solid #b9dfd8;border-radius:8px;background:#eff9f8;color:#31545a;font-size:13px;line-height:1.6}
+.authCard input{min-width:0;width:100%}
