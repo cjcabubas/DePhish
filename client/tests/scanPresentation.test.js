@@ -21,6 +21,26 @@ test('results distinguish probability from policy points and report unavailable 
     assert.match(html, /not a percentage chance/);
     assert.match(html, /Indicator analysis could not finish/);
     assert.doesNotMatch(html, /No specific warning phrases/);
+    const detailed = renderToStaticMarkup(React.createElement(ScanResult, { result: { ...result,
+      model_explanation: { available: true, toward_phishing: [{ term: 'verify now' }], toward_legitimate: [{ term: 'login' }] },
+      detected_urls: [{ url: 'https://portal.example.org', hostname: 'portal.example.org' }],
+      link_checks: [{ url: 'https://portal.example.org', hostname: 'portal.example.org', domain: 'example.org',
+        risk: { score: 40, factors: [{ code: 'test', explanation: 'Example link evidence', points: 40 }] },
+        registration: { age_days: 1200, registrar: 'Example registrar' },
+        destination: { status: 'incomplete', reason: 'DNS lookup temporarily failed.', failure_code: 'EAI_AGAIN', redirects: [] },
+        limitations: 'Domain age and a valid TLS certificate do not establish safety.' }] } }));
+    assert.match(detailed, /<details class="analysisDetails modelDetails"><summary>/);
+    assert.match(detailed, /Text\/model score<\/dt><dd>20/);
+    assert.match(detailed, /Final risk score<\/dt><dd><strong>60 \/ 100/);
+    assert.match(detailed, /Wording that decreased the model&#x27;s phishing score/);
+    assert.match(detailed, /login/);
+    assert.doesNotMatch(detailed, /Wording associated with ordinary/);
+    assert.match(detailed, /Hostname: portal.example.org/);
+    assert.match(detailed, /Registrable domain<\/dt><dd><strong>example.org/);
+    assert.match(detailed, /DNS \/ reachability/);
+    assert.equal(detailed.split('Example link evidence').length - 1, 1);
+    assert.ok(detailed.indexOf('Connection/check status') < detailed.indexOf('Domain Information'));
+    assert.match(detailed, /do not establish safety/);
     const old = renderToStaticMarkup(React.createElement(ScanResult, { result: { prediction: 'Legitimate', risk_score: 1, detected_indicators: [], detected_urls: [] } }));
     assert.match(old, /No specific warning phrases/);
     assert.equal(messageTypeLabel('url'), 'URL');
