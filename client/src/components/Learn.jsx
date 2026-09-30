@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Clock, Fish, GraduationCap, Lock, MessageSquare, Phone, Play, RotateCcw, X } from 'lucide-react';
+import { Award, Check, ChevronLeft, ChevronRight, Clock, Download, Fish, GraduationCap, Lock, MessageSquare, Phone, Play, RotateCcw, X } from 'lucide-react';
 import { learnModules } from '../data/learnModules';
 import { Breadcrumb } from './Breadcrumb';
 import { api } from '../services/api';
+import { badgePreviewUrl, downloadBadge } from '../utils/courseBadge';
 
 const icons = { fish: Fish, sms: MessageSquare, phone: Phone };
 const PASS_THRESHOLD = 75; // % score to pass a section quiz
@@ -38,6 +39,24 @@ function allSectionLessonsDone(module, sectionIndex, progress) {
   if (!modProg) return false;
   const lessonIds = module.sections[sectionIndex].lessons.map(l => l.id);
   return lessonIds.every(id => modProg.completedLessons.includes(id));
+}
+
+function moduleIsComplete(module, moduleProgress) {
+  if (!moduleProgress) return false;
+  const allLessonsDone = flatLessons(module).every(lesson => moduleProgress.completedLessons.includes(lesson.id));
+  const allQuizzesPassed = module.sections.every((_, sectionIndex) => {
+    const section = moduleProgress.sections.find(item => item.sectionIndex === sectionIndex);
+    return section?.passed === true || (section?.quizAttempts ?? []).some(attempt => attempt.score >= PASS_THRESHOLD);
+  });
+  return allLessonsDone && allQuizzesPassed;
+}
+
+function stampCompletedModules(modules) {
+  return modules.map(moduleProgress => {
+    const module = learnModules.find(item => item.id === moduleProgress.moduleId);
+    if (!module || !moduleIsComplete(module, moduleProgress) || moduleProgress.completedAt) return moduleProgress;
+    return { ...moduleProgress, completedAt: new Date().toISOString() };
+  });
 }
 
 // ─── Progress state management ──────────────────────────────────────────────
@@ -92,7 +111,13 @@ export function Learn({ user }) {
   // Load saved progress once on mount — user is guaranteed logged in by the time this renders
   useEffect(() => {
     api.learn.getProgress().then(modules => {
-      if (modules) setProgress(modules);
+      if (modules) {
+        const updated = stampCompletedModules(modules);
+        setProgress(updated);
+        if (updated.some((item, index) => item.completedAt !== modules[index]?.completedAt)) {
+          api.learn.saveProgress(updated).catch(() => {});
+        }
+      }
     }).catch(() => {});
   }, [user?._id]); // reload if the user identity changes (e.g. re-login)
 
@@ -106,7 +131,7 @@ export function Learn({ user }) {
 
   const updateProgress = useCallback(updater => {
     setProgress(prev => {
-      const next = updater(prev);
+      const next = stampCompletedModules(updater(prev));
       persistProgress(next);
       return next;
     });
@@ -125,7 +150,7 @@ export function Learn({ user }) {
   useScrollTop([route.step, route.step === 'module' && route.lessonId]);
 
   if (route.step === 'list') return <ModuleGrid progress={progress} onOpen={open}/>;
-  if (route.step === 'overview') return <ModuleOverview module={module} progress={progress} onBack={goList} onStart={start}/>;
+  if (route.step === 'overview') return <ModuleOverview module={module} progress={progress} user={user} onBack={goList} onStart={start}/>;
   if (route.step === 'quiz') return (
     <SectionQuiz
       module={module}
@@ -174,6 +199,7 @@ function ModuleGrid({ progress, onOpen }) {
           const total = totalLessons(module);
           const done = countDone(module, progress);
           const pct = total ? Math.round((done / total) * 100) : 0;
+          const earned = Boolean(progress.find(item => item.moduleId === module.id)?.completedAt);
           return (
             <button type="button" className={`moduleCard ${module.tone}`} key={module.id} onClick={() => onOpen(module.id)}>
               <span className={`moduleThumb thumb-${module.id}`}><Icon size={46} strokeWidth={1.5}/></span>
@@ -193,6 +219,7 @@ function ModuleGrid({ progress, onOpen }) {
                 <span className="moduleFooter">
                   <Clock size={14} aria-hidden="true"/> {module.duration} · {total} lessons
                   {pct > 0 && <> · <b>{pct}%</b></>}
+                  {earned && <span className="moduleEarnedBadge"><Award size={13} aria-hidden="true"/> Badge earned</span>}
                 </span>
               </span>
             </button>
@@ -205,10 +232,18 @@ function ModuleGrid({ progress, onOpen }) {
 
 // ─── Module overview ─────────────────────────────────────────────────────────
 
-function ModuleOverview({ module, progress, onBack, onStart }) {
+function ModuleOverview({ module, progress, user, onBack, onStart }) {
   const Icon = icons[module.icon];
   const total = totalLessons(module);
   const done = countDone(module, progress);
+  const moduleProgress = progress.find(item => item.moduleId === module.id);
+  const completedAt = moduleProgress?.completedAt;
+  const [badgeError, setBadgeError] = useState('');
+  const badge = { moduleTitle: module.title, learnerName: user?.name, completedAt };
+  const exportBadge = format => {
+    setBadgeError('');
+    downloadBadge(badge, format).catch(() => setBadgeError('Could not prepare the badge download. Please try again.'));
+  };
   return (
     <section className="content narrow">
       <Breadcrumb trail={[{ label: 'Learn', onClick: onBack }, { label: module.title }]}/>
@@ -225,6 +260,21 @@ function ModuleOverview({ module, progress, onBack, onStart }) {
           <span><GraduationCap size={15} aria-hidden="true"/> <b>{module.level}</b></span>
           <span><Play size={15} aria-hidden="true"/> <b>{total} lessons</b></span>
         </div>
+        {completedAt && (
+          <section className="earnedBadge" aria-labelledby="earnedBadgeTitle">
+            <div className="earnedBadgeHeading">
+              <span className="earnedBadgeIcon"><Award size={22} aria-hidden="true"/></span>
+              <div><h2 id="earnedBadgeTitle">Badge earned</h2><p>Completed {new Date(completedAt).toLocaleDateString()}</p></div>
+            </div>
+            <img className="earnedBadgePreview" src={badgePreviewUrl(badge)} alt={`${module.title} course completion badge for ${user?.name || 'DePhish learner'}`}/>
+            <p className="earnedBadgeHint">Download your badge to keep or share it.</p>
+            <div className="earnedBadgeActions">
+              <button className="outline" type="button" onClick={() => exportBadge('png')}><Download size={16}/> Download PNG</button>
+              <button className="primary" type="button" onClick={() => exportBadge('pdf')}><Download size={16}/> Download PDF</button>
+            </div>
+            {badgeError && <p className="badgeDownloadError" role="alert">{badgeError}</p>}
+          </section>
+        )}
         <div className="modPanel">
           <div className="selfPaced">
             <div>
