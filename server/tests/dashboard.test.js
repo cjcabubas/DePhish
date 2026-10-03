@@ -4,6 +4,7 @@ import session from 'express-session';
 import { createApp } from '../src/app.js';
 import { readConfig } from '../src/config/env.js';
 import { dashboardController } from '../src/controllers/dashboardController.js';
+import { fakeOtp } from './fakeOtp.js';
 
 const empty = { total: 0, phishing: 0, suspicious: 0, legitimate: 0, unclassified: 0, active_accounts: 0, activity: [], indicators: [] };
 
@@ -19,7 +20,7 @@ test('dashboard endpoints enforce account ownership and admin role, ignoring que
   const store = new session.MemoryStore();
   let identifierReads = 0;
   const identifiers = { list: async limit => { identifierReads++; return [{ kind: 'email', value: 'flagged@example.com' }]; } };
-  const server = createApp({ config: readConfig({ SESSION_SECRET: 'test-only-secret-at-least-32-characters' }), users, store, scans, identifiers }).listen(0, '127.0.0.1');
+  const server = createApp({ config: readConfig({ SESSION_SECRET: 'test-only-secret-at-least-32-characters' }), users, store, scans, identifiers, otpService: fakeOtp(users) }).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   t.after(() => new Promise(resolve => { store.clear(() => {}); server.close(resolve); server.closeAllConnections(); }));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -27,7 +28,9 @@ test('dashboard endpoints enforce account ownership and admin role, ignoring que
   assert.equal((await get('/api/scans/stats')).status, 401);
   assert.equal((await get('/api/scans/admin/stats')).status, 401);
   assert.equal((await get('/api/scans/admin/identifiers')).status, 401);
-  const signup = await fetch(base + '/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' }, body: JSON.stringify({ name: 'Dashboard Test', email: 'dashboard@example.com', password: 'test-dashboard-password' }) });
+  const register = body => fetch(base + '/api/auth/' + body.path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DePhish-Client': 'web' }, body: JSON.stringify(body.data) });
+  await register({ path: 'signup', data: { name: 'Dashboard Test', email: 'dashboard@example.com' } });
+  const signup = await register({ path: 'signup/verify', data: { name: 'Dashboard Test', email: 'dashboard@example.com', password: 'test-dashboard-password', code: '000042' } });
   assert.equal(signup.status, 201);
   const cookie = signup.headers.getSetCookie().find(value => value.includes('Path=/api;')).split(';')[0];
   const user = (await signup.json()).user;

@@ -27,7 +27,7 @@ npm --prefix client ci
 
 For accounts and saved history, configure `server/.env` as described below. No root npm install is required.
 
-Scanning requires database-backed consent storage. Accounts and database persistence require both `MONGODB_URI` and `SESSION_SECRET`; see the [Express and Atlas setup](server/README.md#configure-mongodb-atlas). The trained model is included, so no dataset download or retraining is needed.
+Scanning requires database-backed consent storage. Accounts and database persistence require both `MONGODB_URI` and `SESSION_SECRET`; registration verification, password recovery, and optional MFA also require Brevo SMTP settings. See the [Express, Atlas, and Brevo SMTP setup](server/README.md#configure-mongodb-atlas). The trained model is included, so no dataset download or retraining is needed.
 
 ### Running services separately
 

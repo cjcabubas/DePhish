@@ -5,6 +5,7 @@ import { createApp } from '../src/app.js';
 import { normalizeInput, extractArtifacts } from '../src/services/artifactService.js';
 import { validateReportInput, analysisText, prepareStoredReport, reviewDecision } from '../src/services/reportService.js';
 import { SCAN_TERMS } from '../../client/src/data/scanTerms.js';
+import { fakeOtp } from './fakeOtp.js';
 
 const consent = { tosAccepted: true, termsVersion: SCAN_TERMS.version };
 const sourceId = 'a'.repeat(24);
@@ -36,7 +37,7 @@ async function setup(t) {
   };
   const store = new session.MemoryStore();
   const app = createApp({ config: { sessionSecret: 'test-only-secret-at-least-32-characters', origins: ['http://localhost:5173'] },
-    users, store, reports,
+    users, store, reports, otpService: fakeOtp(users),
     consents: { create: async fields => { consentWrites++; return { ...fields, _id: 'b'.repeat(24) }; } },
     scans: { create: async () => { scanWrites++; }, findOwned: async (id, owner) => id === sourceId && owner === '1'.padStart(24, '0') ? { message: 'Stored scan content' } : null },
     reportAnalyze: async ({ text }) => {
@@ -55,7 +56,8 @@ async function setup(t) {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const signup = async (email, admin = false) => {
-    const response = await request('/api/auth/signup', { name: 'Reviewer', email, password: 'test-password-1234' });
+    await request('/api/auth/signup', { name: 'Reviewer', email });
+    const response = await request('/api/auth/signup/verify', { name: 'Reviewer', email, password: 'test-password-1234', code: '000042' });
     assert.equal(response.status, 201);
     const { user } = await response.json();
     if (admin) accounts.get(user.id).role = 'admin';

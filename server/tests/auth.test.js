@@ -6,6 +6,7 @@ import { createApp } from '../src/app.js';
 import { readConfig } from '../src/config/env.js';
 import { requireRole } from '../src/middleware/auth.js';
 import { User } from '../src/models/User.js';
+import { fakeOtp, signupWithOtp } from './fakeOtp.js';
 const config = readConfig({ SESSION_SECRET: 'test-only-secret-at-least-32-characters' });
 
 async function setup(t, options = {}) {
@@ -19,7 +20,7 @@ async function setup(t, options = {}) {
     async findById(id) { return records.get(id); },
   };
   const store = new session.MemoryStore(); // Tests only; runtime uses MongoDB sessions.
-  const app = createApp({ config, users, store, ...options });
+  const app = createApp({ config, users, store, otpService: fakeOtp(users), ...options });
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   t.after(() => new Promise(resolve => { store.clear(() => {}); server.close(resolve); server.closeAllConnections(); }));
@@ -35,7 +36,7 @@ const account = { name: 'Test User', email: 'TEST@example.com', password: 'test-
 
 test('signup, secure storage, login, rotation, restoration, and logout', async t => {
   const { request, records } = await setup(t);
-  let response = await request('/api/auth/signup', account);
+  let response = await signupWithOtp(request, account);
   assert.equal(response.status, 201);
   const data = await response.json();
   assert.deepEqual(data.user, { id: '1', name: 'Test User', email: 'test@example.com', role: 'user' });
@@ -48,7 +49,7 @@ test('signup, secure storage, login, rotation, restoration, and logout', async t
   let cookie = firstHeader.split(';')[0];
   assert.equal((await request('/api/auth/me', undefined, cookie)).status, 200);
   assert.equal((await request('/api/auth/me')).status, 401);
-  assert.equal((await request('/api/auth/signup', account)).status, 409);
+  assert.equal((await request('/api/auth/signup/verify', { ...account, code: '000042' })).status, 400);
   const bad = await request('/api/auth/login', { email: account.email, password: 'wrong' });
   const unknown = await request('/api/auth/login', { email: 'missing@example.com', password: 'wrong' });
   assert.equal(bad.status, 401); assert.deepEqual(await bad.json(), await unknown.json());
@@ -66,7 +67,7 @@ test('signup, secure storage, login, rotation, restoration, and logout', async t
 test('reject invalid input, injected fields, cross-origin requests, and oversized bodies', async t => {
   const { request } = await setup(t);
   for (const body of [{ ...account, password: 'short' }, { ...account, email: { $ne: null } }, { ...account, name: '' }, { ...account, password: '🔒'.repeat(20) }])
-    assert.equal((await request('/api/auth/signup', body)).status, 400);
+    assert.equal((await request('/api/auth/signup/verify', { ...body, code: '000042' })).status, 400);
   assert.equal((await request('/api/auth/signup', account, null, { Origin: 'https://untrusted.example' })).status, 403);
   assert.equal((await request('/api/auth/signup', account, null, { 'X-DePhish-Client': '' })).status, 403);
   assert.equal((await request('/api/auth/signup', { ...account, name: 'x'.repeat(20000) })).status, 413);
@@ -85,6 +86,23 @@ test('authentication attempts are rate limited', async t => {
   assert.equal((await request('/api/auth/login', { email: 'invalid' })).status, 429);
 });
 
+test('MFA does not issue a session before code verification, while disabled MFA keeps password login direct', async t => {
+  const { request, records } = await setup(t);
+  const created = await signupWithOtp(request, account);
+  const user = records.get('1');
+  user.mfaEnabled = false;
+  let response = await request('/api/auth/login', { email: account.email, password: account.password });
+  assert.equal(response.status, 200); assert.equal((await response.json()).mfaRequired, undefined); assert.ok(response.headers.get('set-cookie'));
+  user.mfaEnabled = true;
+  response = await request('/api/auth/login', { email: account.email, password: account.password });
+  assert.equal(response.status, 200); const challenge = await response.json(); assert.equal(challenge.mfaRequired, true); assert.equal(response.headers.get('set-cookie'), null);
+  const bypass = await request('/api/auth/mfa-login/verify', { email: account.email, challengeToken: challenge.challengeToken, code: '123456' });
+  assert.equal(bypass.status, 400); assert.equal(bypass.headers.get('set-cookie'), null);
+  const completed = await request('/api/auth/mfa-login/verify', { email: account.email, challengeToken: challenge.challengeToken, code: '000042' });
+  assert.equal(completed.status, 200); assert.ok(completed.headers.get('set-cookie'));
+  assert.ok(created.headers.get('set-cookie'));
+});
+
 test('role guard, user schema, and configuration validation', () => {
   let status; const response = { status(code) { status = code; return this; }, json() {} };
   requireRole('admin')({}, response, () => assert.fail()); assert.equal(status, 401);
@@ -101,7 +119,7 @@ test('scan history requires an account and scopes queries to its owner', async t
   const scans = { list: async (userId, limit) => { seen.push({userId, limit}); return [{_id:'scan1',title:'Meeting',createdAt:new Date(),result:{risk_score:25}}]; } };
   const {request} = await setup(t, {scans});
   assert.equal((await request('/api/scans')).status,401);
-  const signup = await request('/api/auth/signup',account);
+  const signup = await signupWithOtp(request, account);
   const cookie = signup.headers.getSetCookie().find(value => value.includes('Path=/api;')).split(';')[0];
   const response = await request('/api/scans?userId=someone-else&limit=5',undefined,cookie);
   assert.equal(response.status,200);

@@ -4,6 +4,8 @@ export function requireAuth(users) {
     try {
       const user = await users.findById(req.session.userId);
       if (!user) return res.status(401).json({ message: 'Please log in again.' });
+      if (Number(req.session.authVersion ?? 0) !== Number(user.sessionVersion ?? 0))
+        return res.status(401).json({ message: 'Please log in again.' });
       req.user = user;
       next();
     } catch (error) { next(error); }

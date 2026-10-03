@@ -26,6 +26,23 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 4. Optionally set `DB_NAME` to override the database in the URI. `COLLECTION_NAME` selects the scan-history collection (default `scan_reports`). It does not rename the users collection.
 5. Restart Express. `/health` returns HTTP 200 with `ready: true` when accounts are available.
 
+## Configure Brevo email
+
+Registration verification, password recovery, and optional email MFA send single-use 6-digit codes. Configure these values in `server/.env` and in Render's Environment settings:
+
+```dotenv
+BREVO_SMTP_HOST=smtp-relay.brevo.com
+BREVO_SMTP_PORT=587
+BREVO_SMTP_USER=your-brevo-smtp-login
+BREVO_SMTP_PASSWORD=your-brevo-smtp-key
+BREVO_SENDER_EMAIL=no-reply@your-verified-domain.example
+BREVO_SENDER_NAME=DePhish
+```
+
+Port 587 uses STARTTLS; port 465 uses implicit TLS. Use the SMTP username and SMTP key shown by Brevo, and verify the sender domain/address in Brevo. Never use or commit the Brevo API key. Add values to Render's Environment settings and redeploy/restart Express. If SMTP is not configured, email-dependent actions are unavailable.
+
+Codes are stored as keyed hashes, expire after five minutes, allow at most five guesses, and are single-use. Resends have a 60-second cooldown and per-hour limits; API routes also apply per-IP rate limits. Password reset requests return the same response for existing and unknown addresses. MFA is disabled by default, and successful login MFA does not create a session until the code is verified. Password changes revoke existing sessions and send a security notice.
+
 Users and sessions use the `users` and `sessions` collections. Completed scans save a redacted message, minimized assessment, and redacted title in `scan_reports`. Guests use a null userId and `source: guest`; signed-in scans retain their authenticated owner. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
 If Atlas is missing or fails at startup, account routes return 503 and scans stop because consent cannot be recorded. Resolve the connection issue and restart.
@@ -40,8 +57,17 @@ If Atlas is missing or fails at startup, account routes return 503 and scans sto
 | GET | `/api/scans/admin/identifiers` | Legacy scanner observations (not verified threats), limit 1–100 |
 | POST | `/api/scans/analyze` | Classify a message and include automatic link risk |
 | POST | `/api/links/check` | Inspect one public URL |
-| POST | `/api/auth/signup` | Register and start a session |
+| POST | `/api/auth/signup` | Request a registration verification code |
+| POST | `/api/auth/signup/verify` | Verify code, create the account, and start a session |
+| POST | `/api/auth/signup/resend` | Resend a registration code subject to cooldowns |
 | POST | `/api/auth/login` | Log in and rotate the session |
+| POST | `/api/auth/mfa-login/verify` | Complete an MFA login challenge before a session is created |
+| POST | `/api/auth/forgot-password` | Request a reset code; response does not reveal account existence |
+| POST | `/api/auth/forgot-password/verify` | Verify code and receive short-lived reset authorization |
+| POST | `/api/auth/reset-password` | Use the authorization to change the password |
+| GET | `/api/auth/security` | Read account security settings |
+| POST | `/api/auth/security/mfa` | Reauthenticate and request MFA setting change |
+| POST | `/api/auth/security/mfa/verify` | Confirm MFA setting change by code |
 | GET | `/api/auth/me` | Return the current user |
 | POST | `/api/auth/logout` | Destroy the session |
 | GET | `/health` | Account readiness |
@@ -60,7 +86,7 @@ Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requ
 
 Admin totals include account-owned and explicitly marked guest reports, independent of the history page limit. Personal dashboards include only the authenticated owner's scans. Legacy unowned records without a guest source remain excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
 
-Email verification and password reset are not implemented.
+Email verification is not implemented.
 
 ## Community reports and admin decisions
 

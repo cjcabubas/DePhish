@@ -10,7 +10,10 @@ export async function authRequest(path, payload) {
       ...(payload === undefined ? {} : { body: JSON.stringify(payload) }), signal: controller.signal,
     });
     if (path === 'me' && response.status === 401) return { user: null };
-    if ([502, 503, 504].includes(response.status)) throw new Error('Accounts are not available yet. Please try again later.');
+    if ([502, 503, 504].includes(response.status)) {
+      const unavailable = await response.json().catch(() => null);
+      throw new Error(unavailable?.message || 'Accounts are not available yet. Please try again later.');
+    }
     if (response.status === 204) return null;
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Account request failed. Please try again.');
@@ -23,5 +26,9 @@ export async function authRequest(path, payload) {
 }
 export const authApi = {
   login: credentials => authRequest('login', credentials), signup: fields => authRequest('signup', fields),
+  verifySignup: fields => authRequest('signup/verify', fields), resendSignup: fields => authRequest('signup/resend', fields),
+  requestPasswordReset: fields => authRequest('forgot-password', fields), verifyPasswordReset: fields => authRequest('forgot-password/verify', fields),
+  completePasswordReset: fields => authRequest('reset-password', fields), verifyMfaLogin: fields => authRequest('mfa-login/verify', fields), resendMfaLogin: fields => authRequest('mfa-login/resend', fields),
+  security: () => authRequest('security'), requestMfa: fields => authRequest('security/mfa', fields), verifyMfaSetting: fields => authRequest('security/mfa/verify', fields),
   me: () => authRequest('me'), logout: () => authRequest('logout', {}),
 };
