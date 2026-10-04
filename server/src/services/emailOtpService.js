@@ -35,7 +35,7 @@ export function createEmailOtpService({ users, otps, grants, email, secret, now 
     async resetPassword({ email: address, resetToken, password }) { const grant = await grants.find(address, tokenHash(resetToken), new Date(now())); if (!grant) return false; const passwordHash = await bcrypt.hash(password, 12); const consumed = await grants.consume(grant._id, new Date(now())); if (!consumed) return false; await users.updatePassword(grant.userId, passwordHash); const user = await users.findByEmailAddress(address); await email.sendPasswordChanged({ to: address, name: user?.name }).catch(() => {}); return true; },
     async startLoginMfa(user) { const challengeToken = randomBytes(32).toString('base64url'); await issue({ address: user.email, purpose: 'mfa_login', name: user.name, userId: user._id, challengeToken }); return challengeToken; },
     async verifyLoginMfa({ email: address, code, challengeToken }) { const row = await verify(address, 'mfa_login', code, { challengeToken }); return row?.userId ? users.findById(row.userId) : null; },
-    async issueMfaSetting(user, action) { await issue({ address: user.email, purpose: 'mfa_enable', name: user.name, userId: user._id, action }); },
-    async confirmMfaSetting(user, code) { const row = await verify(user.email, 'mfa_enable', code); if (!row || String(row.userId) !== String(user._id)) return null; return users.setMfa(user._id, row.action); },
+    async issueMfaSetting(user, action) { await issue({ address: user.email, purpose: action ? 'mfa_enable' : 'mfa_disable', name: user.name, userId: user._id, action }); },
+    async confirmMfaSetting(user, code, enabled) { const purpose = enabled ? 'mfa_enable' : 'mfa_disable'; const row = await verify(user.email, purpose, code); if (!row || String(row.userId) !== String(user._id) || row.action !== enabled) return null; return users.setMfa(user._id, enabled); },
   };
 }

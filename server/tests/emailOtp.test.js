@@ -78,5 +78,12 @@ test('MFA uses its own purpose and cannot return a user until the matching chall
   const authenticated = await h.service.verifyLoginMfa({ email: account.email, code: h.sent[0].code, challengeToken }); assert.equal(authenticated._id, account._id);
   assert.equal(await h.service.verifyLoginMfa({ email: account.email, code: h.sent[0].code, challengeToken }), null);
   await h.service.issueMfaSetting(account, true); assert.ok(h.rows.has(account.email + ':mfa_enable')); assert.equal(h.rows.get(account.email + ':mfa_login').codeHash, undefined);
-  const changed = await h.service.confirmMfaSetting(account, h.sent.at(-1).code); assert.equal(changed.mfaEnabled, true); assert.equal(changed.sessionVersion, 1);
+  const changed = await h.service.confirmMfaSetting(account, h.sent.at(-1).code, true); assert.equal(changed.mfaEnabled, true); assert.equal(changed.sessionVersion, 1);
+  await h.service.issueMfaSetting(account, false);
+  assert.ok(h.rows.has(account.email + ':mfa_disable'));
+  assert.equal(h.sent.at(-1).purpose, 'mfa_disable');
+  assert.equal(await h.service.confirmMfaSetting(account, h.sent.at(-1).code, true), null);
+  assert.equal(account.mfaEnabled, true, 'MFA stays enabled until its disable OTP verifies');
+  const disabled = await h.service.confirmMfaSetting(account, h.sent.at(-1).code, false);
+  assert.equal(disabled.mfaEnabled, false); assert.equal(disabled.sessionVersion, 2);
 });

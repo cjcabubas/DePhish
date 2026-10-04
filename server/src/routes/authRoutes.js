@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
-import { validateAuth, validateEmail, validateCode, validateAuthenticatedCode, validateMfaChange, validateReset } from '../middleware/validateAuth.js';
+import { validateAuth, validateEmail, validateCode, validateMfaConfirmation, validateMfaChange, validateReset } from '../middleware/validateAuth.js';
 import { requireAuth } from '../middleware/auth.js';
 export function authRoutes(controller, users, limit = 15) {
   const router = Router();
@@ -18,7 +18,7 @@ export function authRoutes(controller, users, limit = 15) {
   router.post('/reset-password', verify, validateReset, controller.resetPassword);
   router.get('/security', requireAuth(users), controller.security);
   router.post('/security/mfa', requireAuth(users), issue, validateMfaChange, controller.requestMfaSetting);
-  router.post('/security/mfa/verify', requireAuth(users), verify, validateAuthenticatedCode, controller.confirmMfaSetting);
+  router.post('/security/mfa/verify', requireAuth(users), verify, validateMfaConfirmation, controller.confirmMfaSetting);
   router.get('/me', requireAuth(users), controller.me);
   router.post('/logout', controller.logout);
   return router;

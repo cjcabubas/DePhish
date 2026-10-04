@@ -8,7 +8,7 @@ export function createEmailService(config = {}) {
     greetingTimeout: 10000, socketTimeout: 15000, tls: { minVersion: 'TLSv1.2' } }) : null;
   return { configured, async sendOtp({ to, name, code, purpose }) {
     if (!transporter) throw new Error('Email transport is not configured');
-    const subject = { registration: 'Verify your DePhish email', forgot_password: 'Your DePhish password reset code', mfa_login: 'Your DePhish sign-in code', mfa_enable: 'Confirm your DePhish security setting' }[purpose];
+    const subject = { registration: 'Verify your DePhish email', forgot_password: 'Your DePhish password reset code', mfa_login: 'Your DePhish sign-in code', mfa_enable: 'Confirm enabling DePhish MFA', mfa_disable: 'Confirm disabling DePhish MFA' }[purpose];
     const safeName = escapeHtml(name || 'there');
     await transporter.sendMail({ from: { name: config.senderName || 'DePhish', address: config.from }, to, subject,
       text: `Hello ${name || 'there'},\n\nYour DePhish verification code is ${code}. It expires in 5 minutes and can be used once. If you did not request this, ignore this email.`,

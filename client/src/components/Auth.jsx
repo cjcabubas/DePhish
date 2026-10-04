@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockKeyhole, LogIn, ShieldCheck, UserPlus } from 'lucide-react';
+import { PasswordInput } from './PasswordInput';
 
 export function Auth({ mode, setMode, submit, requestPasswordReset, verifyPasswordReset, completePasswordReset, verifySignup, resendSignup, verifyMfaLogin, resendMfaLogin }) {
   const signup = mode === 'signup', recovery = mode === 'forgot-password';
@@ -26,12 +27,12 @@ export function Auth({ mode, setMode, submit, requestPasswordReset, verifyPasswo
       <p>{signup ? step === 'verify' ? `Enter the code sent to ${form.email}.` : 'Start scanning and keep your security history in one place.' : recovery ? 'Use the email address associated with your account.' : step === 'mfa' ? `A code was sent to ${form.email}.` : 'Log in to view your previous scans and reports.'}</p>
       {notice && <div className="authNotice" role="status">{notice}</div>}
       {!complete && <form onSubmit={onSubmit} aria-busy={busy}>
-        {signup && step === 'request' && <label>Full name<input required maxLength={80} autoComplete="name" disabled={busy} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label>}
-        {(!recovery || step === 'request') && step !== 'mfa' && <label>Email address<input required type="email" maxLength={254} autoComplete="email" disabled={busy || step === 'verify' || step === 'reset'} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}/></label>}
-        {!signup && !recovery && step !== 'mfa' && <label>Password<input required type="password" autoComplete="current-password" disabled={busy} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}/></label>}
-        {(step === 'verify' || step === 'mfa') && <label>6-digit code<input required type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} disabled={busy} placeholder="000000" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}/></label>}
-        {signup && step === 'verify' && <label>Password<input required type="password" autoComplete="new-password" minLength={12} maxLength={72} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}/></label>}
-        {recovery && step === 'reset' && <><label>New password<input required type="password" autoComplete="new-password" minLength={12} maxLength={72} value={newPassword} onChange={e => setNewPassword(e.target.value)}/></label><label>Confirm new password<input required type="password" autoComplete="new-password" minLength={12} maxLength={72} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}/></label></>}
+        {signup && step === 'request' && <label>Full name<input required maxLength={80} autoComplete="name" disabled={busy} placeholder="Enter name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}/></label>}
+        {(!recovery || step === 'request') && step !== 'mfa' && <label>Email address<input required type="email" maxLength={254} autoComplete="email" disabled={busy || step === 'verify' || step === 'reset'} placeholder="Enter email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}/></label>}
+        {!signup && !recovery && step !== 'mfa' && <label>Password<PasswordInput required autoComplete="current-password" disabled={busy} placeholder="Enter password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}/></label>}
+        {(step === 'verify' || step === 'mfa') && <label>6-digit code<input required type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} disabled={busy} placeholder="Enter OTP" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}/></label>}
+        {signup && step === 'verify' && <label>Password<PasswordInput required autoComplete="new-password" minLength={12} maxLength={72} placeholder="Enter password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}/></label>}
+        {recovery && step === 'reset' && <><label>New password<PasswordInput required autoComplete="new-password" minLength={12} maxLength={72} placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)}/></label><label>Confirm new password<PasswordInput required autoComplete="new-password" minLength={12} maxLength={72} placeholder="Confirm password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}/></label></>}
         {(step === 'verify' || step === 'mfa') && <button type="button" className="authForgot" disabled={busy || cooldown > 0} onClick={resend}>{cooldown ? `Resend code in ${cooldown}s` : 'Resend code'}</button>}
         {!recovery && !signup && step !== 'mfa' && <button type="button" className="authForgot" onClick={() => setMode('forgot-password')}>Forgot password?</button>}
         {error && <p className="scanError" role="alert">{error}</p>}

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const schema = new mongoose.Schema({
   email: { type: String, required: true, lowercase: true, trim: true },
-  purpose: { type: String, enum: ['registration', 'forgot_password', 'mfa_login', 'mfa_enable'], required: true },
+  purpose: { type: String, enum: ['registration', 'forgot_password', 'mfa_login', 'mfa_enable', 'mfa_disable'], required: true },
   codeHash: { type: String, select: false },
   challengeHash: { type: String, select: false },
   userId: { type: mongoose.Schema.Types.ObjectId },

@@ -126,3 +126,4 @@
 .authPage button:disabled{opacity:.6;cursor:not-allowed}
 .authCard .authNotice{padding:12px 14px;border:1px solid #b9dfd8;border-radius:8px;background:#eff9f8;color:#31545a;font-size:13px;line-height:1.6}
 .authCard input{min-width:0;width:100%}
+.passwordField{display:block;position:relative;width:100%;min-width:0}.authCard .passwordField input{padding-right:46px}.passwordVisibility{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:#607277;cursor:pointer}.passwordVisibility:hover{background:#eef6f5;color:#087c72}.passwordVisibility:focus-visible{outline:2px solid #0a9386;outline-offset:1px}
