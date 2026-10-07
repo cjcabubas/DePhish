@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { randomInt, randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 
+const throttled = message => Object.assign(new Error(message), { code: 'OTP_RATE_LIMIT' });
 const ttl = 5 * 60 * 1000;
 const digest = (secret, value) => createHmac('sha256', secret).update(value).digest('hex');
 const eq = (a, b) => { const x = Buffer.from(a || ''), y = Buffer.from(b || ''); return x.length === y.length && timingSafeEqual(x, y); };
@@ -9,12 +10,12 @@ export function createEmailOtpService({ users, otps, grants, email, secret, now 
   const tokenHash = token => digest(secret, `reset:${token}`);
   async function issue({ address, purpose, name, userId, action, challengeToken }) {
     const current = await otps.get(address, purpose); const time = now();
-    if (current && time - current.lastSentAt.getTime() < 60_000) throw new Error('Please wait before requesting another code.');
+    if (current && time - current.lastSentAt.getTime() < 60_000) throw throttled('Please wait 60 seconds before requesting another code.');
     const windowStart = current?.windowStartedAt?.getTime() || time;
-    if (current && time - windowStart < 60 * 60_000 && current.requestCount >= 5) throw new Error('Too many code requests. Please try again later.');
+    if (current && time - windowStart < 60 * 60_000 && current.requestCount >= 5) throw throttled('Too many code requests for this email. Please try again later.');
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const reserved = await otps.put(address, purpose, { email: address, purpose, codeHash: codeHash(purpose, address, code), codeExpiresAt: new Date(time + ttl), expiresAt: new Date(time + 60 * 60_000), lastSentAt: new Date(time), windowStartedAt: new Date(time - windowStart >= 60 * 60_000 ? time : windowStart), requestCount: current && time - windowStart < 60 * 60_000 ? current.requestCount + 1 : 1, attempts: 0, name, userId, action, challengeHash: challengeToken ? digest(secret, `mfa:${challengeToken}`) : undefined });
-    if (!reserved) throw new Error('Please wait before requesting another code.');
+    if (!reserved) throw throttled('Please wait 60 seconds before requesting another code.');
     try { await email.sendOtp({ to: address, name, code, purpose }); }
     catch (error) { await otps.remove(address, purpose); throw error; }
   }

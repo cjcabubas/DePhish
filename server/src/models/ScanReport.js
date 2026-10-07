@@ -2,6 +2,9 @@ import mongoose from 'mongoose';
 export function createScanRepository(collectionName = 'scan_reports') {
   const schema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, default: null, ref: 'User' },
+    guestId: { type: String, default: null },
+    submittedBy: { type: String, enum: ['user', 'guest'], default: function () { return this.userId ? 'user' : 'guest'; } },
+    originallySubmittedAsGuest: { type: Boolean, default: false },
     source: { type: String, enum: ['account', 'guest'], default: 'account' },
     message: { type: String, maxlength: 5000 },
     tosAcknowledged: { type: Boolean, default: false },
@@ -12,12 +15,15 @@ export function createScanRepository(collectionName = 'scan_reports') {
     result: { type: mongoose.Schema.Types.Mixed, required: true },
   }, { timestamps: true, bufferCommands: false });
   schema.index({ userId: 1, createdAt: -1 });
+  schema.index({ guestId: 1, userId: 1 });
   schema.index({ createdAt: -1 });
   schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   const Scan = mongoose.models.ScanReport || mongoose.model('ScanReport', schema, collectionName);
   return {
     init: () => Scan.init(),
-    create: fields => Scan.create(fields),
+    create: async (fields, session) => session ? (await Scan.create([fields], { session }))[0] : Scan.create(fields),
+    claimGuest: (guestId, userId, session) => Scan.updateMany({ guestId, userId: null },
+      { $set: { userId, submittedBy: 'user', originallySubmittedAsGuest: true, source: 'account' } }, { session }),
     findOwned: (id, userId) => Scan.findOne({ _id: id, userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).lean(),
     list: (userId, limit) => Scan.find({ userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).sort({ createdAt: -1 }).limit(limit).lean(),
     async stats(userId, since) {

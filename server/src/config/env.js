@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 // Always load server/.env, even when started from the repository root.
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)), quiet: true });
 export function readConfig(env = process.env) {
-  const smtpPort = Number(env.BREVO_SMTP_PORT || 587);
+  const smtpPort = Number(env.BREVO_SMTP_PORT || 2525);
   const smtp = {
     host: env.BREVO_SMTP_HOST || '', port: smtpPort,
     user: env.BREVO_SMTP_USER || '', pass: env.BREVO_SMTP_PASSWORD || '', from: env.BREVO_SENDER_EMAIL || '', senderName: env.BREVO_SENDER_NAME || 'DePhish',

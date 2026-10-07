@@ -7,6 +7,9 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   }, { _id: false });
   const schema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    guestId: { type: String, default: null },
+    submittedBy: { type: String, enum: ['user', 'guest'], default: function () { return this.userId ? 'user' : 'guest'; } },
+    originallySubmittedAsGuest: { type: Boolean, default: false },
     sourceScanId: { type: mongoose.Schema.Types.ObjectId, default: null },
     consentId: { type: mongoose.Schema.Types.ObjectId, required: true },
     content: { message: String, suspiciousUrl: String, senderEmail: String, phone: String, details: String },
@@ -22,6 +25,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   }, { timestamps: true, bufferCommands: false });
   schema.index({ status: 1, createdAt: -1 });
   schema.index({ userId: 1, createdAt: -1 });
+  schema.index({ guestId: 1, userId: 1 });
   schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   const threatSchema = new mongoose.Schema({
     reportId: { type: mongoose.Schema.Types.ObjectId, required: true },
@@ -36,7 +40,9 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   const live = () => ({ expiresAt: { $gt: new Date() } });
   return {
     init: async () => { await Report.init(); await Threat.init(); },
-    create: fields => Report.create(fields),
+    create: async (fields, session) => session ? (await Report.create([fields], { session }))[0] : Report.create(fields),
+    claimGuest: (guestId, userId, session) => Report.updateMany({ guestId, userId: null },
+      { $set: { userId, submittedBy: 'user', originallySubmittedAsGuest: true } }, { session }),
     find: id => Report.findOne({ _id: id, ...live() }).lean(),
     async list({ userId, status, page = 1 }) {
       const scope = { ...live(), ...(userId ? { userId } : {}) };

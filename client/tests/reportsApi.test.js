@@ -12,7 +12,7 @@ test('reports use their own endpoints with admin status decisions and credential
     await api.reports.review('id', { status: 'verified', revision: 0, indicatorIds: ['selected'], note: 'Confirmed', emailReviewed: true });
     await api.reports.threats();
     assert.deepEqual(calls.map(call => call.url), ['/api/reports', '/api/reports/admin?status=pending&page=2', '/api/reports?status=rejected&page=1', '/api/reports/id/status', '/api/reports/threat-indicators?page=1']);
-    assert.ok(calls.every(call => call.credentials === 'same-origin'));
+    assert.ok(calls.every(call => call.credentials === 'include'));
     assert.equal(calls[3].method, 'PATCH'); assert.equal(calls[3].headers['X-DePhish-Client'], 'web');
     assert.equal(JSON.parse(calls[3].body).revision, 0);
     globalThis.fetch = async () => ({ ok: false, json: async () => ({ message: 'Another admin changed this report.' }) });

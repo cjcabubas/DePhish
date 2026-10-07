@@ -1,3 +1,4 @@
+import { createOwnershipService } from './services/ownershipService.js';
 import mongoose from 'mongoose';
 import MongoStore from 'connect-mongo';
 import { readConfig } from './config/env.js';
@@ -19,6 +20,7 @@ let reports;
 let progress;
 let emailOtps;
 let resetGrants;
+let ownership;
 if (config.mongoUri && config.sessionSecret) {
   try {
     await mongoose.connect(config.mongoUri, { serverSelectionTimeoutMS: 10000, dbName: config.dbName });
@@ -29,6 +31,8 @@ if (config.mongoUri && config.sessionSecret) {
     await consents.init();
     reports = createReportRepository();
     await reports.init();
+    ownership = createOwnershipService(scans, reports);
+    await ownership.init();
     identifiers = createIdentifierRepository();
     await identifiers.init();
     progress = createLearningProgressRepository();
@@ -47,6 +51,7 @@ if (config.mongoUri && config.sessionSecret) {
     consents = undefined;
     identifiers = undefined;
     reports = undefined;
+    ownership = undefined;
     progress = undefined;
     emailOtps = undefined;
     resetGrants = undefined;
@@ -54,7 +59,7 @@ if (config.mongoUri && config.sessionSecret) {
 } else {
   console.log('Accounts are unconfigured. Set MONGODB_URI and SESSION_SECRET in server/.env, then restart.');
 }
-const app = createApp({ config, users: userRepository, store, scans, identifiers, consents, reports, progress, emailOtps, resetGrants, isReady: () => Boolean(store) && mongoose.connection.readyState === 1 });
+const app = createApp({ config, users: userRepository, store, scans, identifiers, consents, reports, progress, ownership, emailOtps, resetGrants, isReady: () => Boolean(store) && mongoose.connection.readyState === 1 });
 const server = app.listen(config.port, config.host, () => console.log('Auth service listening on port ' + config.port));
 async function shutdown() { server.close(async () => { await mongoose.disconnect(); process.exit(0); }); }
 process.on('SIGINT', shutdown);

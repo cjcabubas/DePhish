@@ -95,9 +95,9 @@ test('MFA does not issue a session before code verification, while disabled MFA 
   assert.equal(response.status, 200); assert.equal((await response.json()).mfaRequired, undefined); assert.ok(response.headers.get('set-cookie'));
   user.mfaEnabled = true;
   response = await request('/api/auth/login', { email: account.email, password: account.password });
-  assert.equal(response.status, 200); const challenge = await response.json(); assert.equal(challenge.mfaRequired, true); assert.equal(response.headers.get('set-cookie'), null);
+  assert.equal(response.status, 200); const challenge = await response.json(); assert.equal(challenge.mfaRequired, true); assert.equal(response.headers.getSetCookie().some(value => value.startsWith('dephish.sid=')), false);
   const bypass = await request('/api/auth/mfa-login/verify', { email: account.email, challengeToken: challenge.challengeToken, code: '123456' });
-  assert.equal(bypass.status, 400); assert.equal(bypass.headers.get('set-cookie'), null);
+  assert.equal(bypass.status, 400); assert.equal(bypass.headers.getSetCookie().some(value => value.startsWith('dephish.sid=')), false);
   const completed = await request('/api/auth/mfa-login/verify', { email: account.email, challengeToken: challenge.challengeToken, code: '000042' });
   assert.equal(completed.status, 200); assert.ok(completed.headers.get('set-cookie'));
   assert.ok(created.headers.get('set-cookie'));
@@ -128,4 +128,66 @@ test('scan history requires an account and scopes queries to its owner', async t
   assert.equal((await request('/api/scans/analyze',{text:'hello'},cookie,{Origin:'https://untrusted.example'})).status,403);
   await request('/api/auth/logout',{},cookie);
   assert.equal((await request('/api/scans',undefined,cookie)).status,401);
+});
+
+test('migration failure prevents authenticated success and preserves guest proof for login retry', async t => {
+  let fail = true;
+  const claims = [];
+  const { request } = await setup(t, { ownership: { async claim(guestId, userId) {
+    claims.push({ guestId, userId });
+    if (fail) throw new Error('Private database failure');
+  } } });
+  const bootstrap = await request('/api/auth/me');
+  const guest = bootstrap.headers.getSetCookie().find(value => value.startsWith('dephish.guest=')).split(';')[0];
+  await request('/api/auth/signup', { name: account.name, email: account.email }, guest);
+  const response = await request('/api/auth/signup/verify', { ...account, code: '000042', userId: 'forged', guestId: 'forged' }, guest);
+  assert.equal(response.status, 503);
+  assert.equal((await response.text()).includes('Private database'), false);
+  assert.equal(response.headers.getSetCookie().some(value => value.startsWith('dephish.sid=')), false);
+  assert.equal(claims[0].userId, '1'); assert.match(claims[0].guestId, /^guest_[a-f0-9]{64}$/);
+  fail = false;
+  const retry = await request('/api/auth/login', account, guest);
+  assert.equal(retry.status, 200);
+  assert.deepEqual(claims[1], claims[0]);
+  const rotated = retry.headers.getSetCookie().find(value => value.startsWith('dephish.guest=')).split(';')[0];
+  assert.notEqual(rotated, guest);
+});
+
+test('email transport failures are unavailable errors, not rate limits, and do not leak provider details', async t => {
+  const { request } = await setup(t, { otpService: { configured: true, async requestRegistration() {
+    throw Object.assign(new Error('Connection timeout: private-provider.example'), { code: 'ETIMEDOUT' });
+  } } });
+  for (const path of ['/api/auth/signup', '/api/auth/signup/resend']) {
+    const response = await request(path, { name: 'Test', email: 'test@example.com' });
+    assert.equal(response.status, 503);
+    const body = await response.text();
+    assert.match(body, /Unable to send/);
+    assert.doesNotMatch(body, /private-provider|Connection timeout/);
+  }
+});
+
+test('OTP cooldowns retain their rate-limit status', async t => {
+  const { request } = await setup(t, { otpService: { configured: true, async requestRegistration() {
+    throw Object.assign(new Error('Please wait 60 seconds before requesting another code.'), { code: 'OTP_RATE_LIMIT' });
+  } } });
+  const response = await request('/api/auth/signup', { name: 'Test', email: 'test@example.com' });
+  assert.equal(response.status, 429);
+});
+
+test('shared networks can request more than five codes while the IP cap remains enforced', async t => {
+  const { request } = await setup(t);
+  for (let i = 0; i < 30; i++) {
+    const response = await request('/api/auth/signup', { name: 'Test', email: `test${i}@example.com` });
+    assert.equal(response.status, 202);
+  }
+  assert.equal((await request('/api/auth/signup', { name: 'Test', email: 'extra@example.com' })).status, 429);
+});
+
+test('successful logins do not consume the failed-login budget', async t => {
+  const { request } = await setup(t, { authLimit: 1 });
+  await signupWithOtp(request, account);
+  assert.equal((await request('/api/auth/login', account)).status, 200);
+  assert.equal((await request('/api/auth/login', account)).status, 200);
+  assert.equal((await request('/api/auth/login', { ...account, password: 'incorrect' })).status, 401);
+  assert.equal((await request('/api/auth/login', { ...account, password: 'incorrect' })).status, 429);
 });

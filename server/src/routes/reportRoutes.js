@@ -1,3 +1,4 @@
+import { ownershipFields, createOwned } from '../services/ownershipService.js';
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
 import { requireAuth, requireRole } from '../middleware/auth.js';
@@ -7,7 +8,7 @@ import { orchestrateScan } from '../services/scanOrchestrator.js';
 import { analyzerClient } from '../services/analyzerClient.js';
 import { validateReportInput, analysisText, prepareStoredReport, reviewDecision, reportError } from '../services/reportService.js';
 
-export function reportRoutes({ users, scans, reports, consents, origins = [], mlUrl, analyze = input => orchestrateScan(input, analyzerClient(mlUrl)) }) {
+export function reportRoutes({ users, scans, reports, consents, ownership, origins = [], mlUrl, analyze = input => orchestrateScan(input, analyzerClient(mlUrl)) }) {
   const router = Router();
   let active = 0;
   router.use((req, res, next) => {
@@ -54,12 +55,13 @@ export function reportRoutes({ users, scans, reports, consents, origins = [], ml
         if (req.body.termsVersion !== SCAN_TERMS.version) throw reportError(409, 'The consent terms have changed. Refresh and review them.');
         if (!consents) throw reportError(503, 'Consent storage is unavailable. No report was analyzed.');
         const consent = await consents.create({ userId: req.user ? String(req.user._id) : null,
+          guestId: req.user ? null : req.guestId,
           source: req.user ? 'account' : 'guest', accepted: true, acceptedAt: new Date(), termsVersion: SCAN_TERMS.version,
           termsEffectiveDate: SCAN_TERMS.effectiveDate, termsText: SCAN_TERMS.text,
           termsSha256: createHash('sha256').update(SCAN_TERMS.text).digest('hex') });
         const { report, prepared, artifacts } = await analyze({ text, type: 'auto' });
         const stored = prepareStoredReport(fields, prepared, artifacts, report);
-        const saved = await reports.create({ ...stored, userId: req.user ? String(req.user._id) : null,
+        const saved = await createOwned(ownership, reports, { ...stored, ...ownershipFields(req.user, req.guestId),
           sourceScanId, consentId: consent._id, status: 'pending', revision: 0, approvedIndicatorIds: [],
           expiresAt: new Date(Date.now() + 30 * 86400000) });
         res.status(201).json({ report: saved });

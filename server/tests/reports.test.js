@@ -13,6 +13,7 @@ const analysis = { risk_score: 82, prediction: 'Phishing', phishing_type: 'Crede
 
 async function setup(t) {
   const accounts = new Map(), records = new Map(), threats = new Map();
+  const claims = new Map();
   let analyzed = [], scanWrites = 0, consentWrites = 0;
   const users = { create: async fields => {
     const user = { ...fields, _id: String(accounts.size + 1).padStart(24, '0') }; accounts.set(user._id, user); return user;
@@ -38,6 +39,15 @@ async function setup(t) {
   const store = new session.MemoryStore();
   const app = createApp({ config: { sessionSecret: 'test-only-secret-at-least-32-characters', origins: ['http://localhost:5173'] },
     users, store, reports, otpService: fakeOtp(users),
+    ownership: {
+      create: (repository, fields) => repository.create(fields),
+      async claim(guestId, userId) {
+        if (!guestId || (claims.has(guestId) && claims.get(guestId) !== userId)) return;
+        claims.set(guestId, userId);
+        for (const report of records.values()) if (report.guestId === guestId && !report.userId)
+          Object.assign(report, { userId, submittedBy: 'user', originallySubmittedAsGuest: true });
+      },
+    },
     consents: { create: async fields => { consentWrites++; return { ...fields, _id: 'b'.repeat(24) }; } },
     scans: { create: async () => { scanWrites++; }, findOwned: async (id, owner) => id === sourceId && owner === '1'.padStart(24, '0') ? { message: 'Stored scan content' } : null },
     reportAnalyze: async ({ text }) => {
@@ -156,4 +166,62 @@ test('URL candidates retain useful paths but exclude tokens, embedded credential
   assert.ok(stored.candidates.some(item => item.kind === 'url' && item.value === 'https://example.com/login'));
   assert.equal(stored.candidates.some(item => item.kind === 'url' && item.value.includes('example.net')), false);
   for (const value of ['SecretPass', 'privateToken', 'fragmentSecret', 'LongSecretPath12345']) assert.equal(JSON.stringify(stored).includes(value), false);
+});
+
+const guestCookie = response => response.headers.getSetCookie().find(value => value.startsWith('dephish.guest='))?.split(';')[0];
+const sessionCookie = response => response.headers.getSetCookie().find(value => value.startsWith('dephish.sid=') && value.includes('Path=/api;'))?.split(';')[0];
+
+test('guest ownership persists, migrates at signup, survives review and cannot be transferred', async t => {
+  const app = await setup(t);
+  const first = await app.request('/api/reports', { ...consent, message: 'Guest report', userId: 'forged', guestId: 'forged' });
+  const cookie = guestCookie(first);
+  assert.ok(cookie);
+  assert.match(first.headers.getSetCookie().find(value => value.startsWith('dephish.guest=')), /HttpOnly/);
+  const one = (await first.json()).report;
+  assert.match(one.guestId, /^guest_[a-f0-9]{64}$/);
+  assert.equal(one.userId, null); assert.equal(one.submittedBy, 'guest');
+  const second = await app.request('/api/reports', { ...consent, message: 'Another visit' }, cookie);
+  const two = (await second.json()).report;
+  assert.equal(two.guestId, one.guestId);
+  const admin = await app.signup('admin@example.com', true);
+  const decision = { status: 'verified', revision: 0, indicatorIds: [], note: 'Reviewed guest submission.' };
+  await app.request(`/api/reports/${one._id}/status`, decision, admin, 'PATCH');
+  await app.request(`/api/reports/${two._id}/status`, { ...decision, status: 'rejected' }, admin, 'PATCH');
+  await app.request('/api/auth/signup', { name: 'Owner', email: 'owner@example.com' }, cookie);
+  const signup = await app.request('/api/auth/signup/verify', { code: '000042', name: 'Owner', email: 'owner@example.com', password: 'test-password-1234', guestId: 'forged' }, cookie);
+  assert.equal(signup.status, 201);
+  const user = (await signup.json()).user;
+  assert.notEqual(guestCookie(signup), cookie);
+  const history = await (await app.request('/api/reports', undefined, sessionCookie(signup))).json();
+  assert.equal(history.total, 2);
+  assert.deepEqual(new Set(history.reports.map(row => row._id)), new Set([one._id, two._id]));
+  for (const row of history.reports) {
+    assert.equal(row.userId, user.id); assert.equal(row.guestId, one.guestId);
+    assert.equal(row.submittedBy, 'user'); assert.equal(row.originallySubmittedAsGuest, true);
+  }
+  const reviewed = await app.request(`/api/reports/${one._id}/status`, { ...decision, revision: 1, status: 'rejected', userId: 'forged' }, admin, 'PATCH');
+  const updated = (await reviewed.json()).report;
+  assert.equal(updated._id, one._id); assert.equal(updated.userId, user.id);
+  await app.request('/api/auth/signup', { name: 'Other', email: 'other@example.com' }, cookie);
+  const other = await app.request('/api/auth/signup/verify', { code: '000042', name: 'Other', email: 'other@example.com', password: 'test-password-1234' }, cookie);
+  assert.equal(other.status, 201);
+  assert.equal((await (await app.request('/api/reports', undefined, sessionCookie(other))).json()).total, 0);
+  assert.equal(app.records.size, 2);
+});
+
+test('login claims only the signed browser guest cookie; failed login and forged tokens cannot claim', async t => {
+  const app = await setup(t);
+  await app.signup('existing@example.com');
+  const response = await app.request('/api/reports', { ...consent, message: 'Private guest report' });
+  const cookie = guestCookie(response), report = (await response.json()).report;
+  const credentials = { email: 'existing@example.com', password: 'test-password-1234' };
+  assert.equal((await app.request('/api/auth/login', { ...credentials, password: 'wrong' }, cookie)).status, 401);
+  assert.equal(app.records.get(report._id).userId, null);
+  const forged = `dephish.guest=${report.guestId}.${'0'.repeat(64)}`;
+  const invalidLogin = await app.request('/api/auth/login', { ...credentials, guestId: report.guestId }, forged);
+  assert.equal(invalidLogin.status, 200);
+  assert.equal(app.records.get(report._id).userId, null);
+  const login = await app.request('/api/auth/login', credentials, cookie);
+  assert.equal(login.status, 200);
+  assert.equal((await (await app.request('/api/reports', undefined, sessionCookie(login))).json()).total, 1);
 });

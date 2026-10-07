@@ -6,7 +6,7 @@ test('dashboard requests use private endpoints and never replace errors with dem
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async (url, options) => {
-      assert.equal(options.credentials, 'same-origin');
+      assert.equal(options.credentials, 'include');
       assert.ok(['/api/scans/stats', '/api/scans/admin/stats'].includes(url));
       return { ok: true, json: async () => ({ total: 0, scope: url.includes('admin') ? 'all_accounts' : 'account' }) };
     };

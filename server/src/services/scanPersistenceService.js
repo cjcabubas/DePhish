@@ -1,6 +1,7 @@
+import { ownershipFields, createOwned } from './ownershipService.js';
 import { createRedactor, retentionPolicy } from './retentionService.js';
 
-export async function persistScan({ report, artifacts, prepared, user, consent, scans, identifiers, pseudonymizationKey }) {
+export async function persistScan({ report, artifacts, prepared, user, guestId, ownership, consent, scans, identifiers, pseudonymizationKey }) {
   const policy = { ...retentionPolicy(report.prediction, Boolean(user)), identifierDays: 0, identifierExpiresAt: null,
     note: 'Scan history is stored separately. Only admin-verified community reports publish threat indicators.' };
   const redact = createRedactor(prepared, artifacts);
@@ -8,11 +9,11 @@ export async function persistScan({ report, artifacts, prepared, user, consent, 
   let persistence = { status: 'unavailable', reason: 'Scan completed, but the redacted report could not be saved.' };
   if (scans) {
     try {
-      const saved = await scans.create({ userId: user ? String(user._id) : null, source: user ? 'account' : 'guest',
+      const saved = await createOwned(ownership, scans, { ...ownershipFields(user, guestId), source: user ? 'account' : 'guest',
         message: redact(prepared.original).slice(0, 5000), title: redact(prepared.original.trim().split('\n')[0]).slice(0, 80),
         tosAcknowledged: true, consentId: consent._id, result: storedReport, expiresAt: policy.reportExpiresAt,
         retentionVersion: policy.version });
-      persistence = { status: 'saved', id: String(saved._id), scope: user ? 'account' : 'guest', redacted: true };
+      persistence = { status: 'saved', id: String(saved._id), scope: saved.userId || user ? 'account' : 'guest', redacted: true };
     } catch { /* The assessment remains available if report storage fails. */ }
   }
   // Scanner observations never publish threat indicators. Admin report review owns that workflow.

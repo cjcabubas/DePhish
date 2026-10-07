@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 export function createConsentRepository() {
   const schema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, immutable: true },
+    guestId: { type: String, default: null, immutable: true },
     source: { type: String, enum: ['account', 'guest'], required: true, immutable: true },
     accepted: { type: Boolean, required: true, enum: [true], immutable: true },
     acceptedAt: { type: Date, required: true, immutable: true },

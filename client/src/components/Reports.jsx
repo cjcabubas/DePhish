@@ -49,7 +49,7 @@ export function Report({ source: initialSource, authenticated }) {
     <p className="lead">Submit a suspicious message or contact for admin review.</p>
     {authenticated && <div className="reportTabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Submit a report</button><button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My reports</button></div>}
     {tab === 'mine' ? <ReportQueue/> : saved ? <section className="panel reportReceipt" role="status"><ShieldCheck/><h2>Report submitted</h2><p>Your report is pending admin review. No threat indicators have been published.</p><p>Reference: {saved._id}</p><Assessment report={saved}/>
-      {!authenticated && <p>Guest reports can be reviewed by admins. Sign in before future submissions to track their status in My reports.</p>}
+      {!authenticated && <p>Sign in or create an account in this browser to add your guest reports to My reports. Keep browser cookies until you sign in; reports expire after 30 days.</p>}
       <button className="outline" onClick={() => { setSaved(null); setSource(null); }}>Submit another report</button></section>
       : <form className="reportForm" onSubmit={submit} aria-busy={busy}>
         {source?.sourceScanId && <p className="reportSource">Reporting saved scan {source.sourceScanId}. Its saved, redacted message will be analyzed again. Add any missing sender or link details below.</p>}

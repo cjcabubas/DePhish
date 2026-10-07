@@ -32,18 +32,22 @@ Registration verification, password recovery, and optional email MFA send single
 
 ```dotenv
 BREVO_SMTP_HOST=smtp-relay.brevo.com
-BREVO_SMTP_PORT=587
+BREVO_SMTP_PORT=2525
 BREVO_SMTP_USER=your-brevo-smtp-login
 BREVO_SMTP_PASSWORD=your-brevo-smtp-key
 BREVO_SENDER_EMAIL=no-reply@your-verified-domain.example
 BREVO_SENDER_NAME=DePhish
 ```
 
-Port 587 uses STARTTLS; port 465 uses implicit TLS. Use the SMTP username and SMTP key shown by Brevo, and verify the sender domain/address in Brevo. Never use or commit the Brevo API key. Add values to Render's Environment settings and redeploy/restart Express. If SMTP is not configured, email-dependent actions are unavailable.
+Ports 2525 (default) and 587 use STARTTLS; port 465 uses implicit TLS. Use the SMTP username and SMTP key shown by Brevo, and verify the sender domain/address in Brevo. Never use or commit the Brevo API key. Add values to Render's Environment settings and redeploy/restart Express. If SMTP is not configured, email-dependent actions are unavailable.
+
+Render free web services block outbound SMTP ports 25, 465, and 587. Set `BREVO_SMTP_PORT=2525` explicitly in Render when using Brevo; changing the code default does not override an existing environment value.
+
+Auth requests allow 45 seconds so the browser can receive SMTP errors instead of aborting after 15 seconds. SMTP failures return 503, not 429. Shared IP limits allow 30 successful code requests/hour and 30 failed verification requests/15 minutes. Login allows 15 failed attempts/15 minutes; successful logins and server failures do not consume that budget. Per-email code limits remain five/hour with a 60-second cooldown and five guesses per code.
 
 Codes are stored as keyed hashes, expire after five minutes, allow at most five guesses, and are single-use. Resends have a 60-second cooldown and per-hour limits; API routes also apply per-IP rate limits. Password reset requests return the same response for existing and unknown addresses. MFA is disabled by default, and successful login MFA does not create a session until the code is verified. Password changes revoke existing sessions and send a security notice.
 
-Users and sessions use the `users` and `sessions` collections. Completed scans save a redacted message, minimized assessment, and redacted title in `scan_reports`. Guests use a null userId and `source: guest`; signed-in scans retain their authenticated owner. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
+Users and sessions use the `users` and `sessions` collections. Completed scans save a redacted message, minimized assessment, and redacted title in `scan_reports`. Guests use a null `userId`, a server-issued `guestId`, and `source: guest`; signed-in scans retain their authenticated owner. Both scans and community reports also store `submittedBy` and `originallySubmittedAsGuest`. Personal history is scoped to that owner. Credentials belong only in the ignored `.env` or deployment secret settings. Keep committed secret values blank. The server loads `.env` from this folder regardless of the working directory.
 
 If Atlas is missing or fails at startup, account routes return 503 and scans stop because consent cannot be recorded. Resolve the connection issue and restart.
 
@@ -86,7 +90,7 @@ Sessions use HttpOnly, SameSite=Lax cookies and MongoDB storage. Production requ
 
 Admin totals include account-owned and explicitly marked guest reports, independent of the history page limit. Personal dashboards include only the authenticated owner's scans. Legacy unowned records without a guest source remain excluded. Indicators count once per category per scan. Missing classifications are reported as unclassified; missing activity dates are returned as zero. Admin dashboards expose aggregates without message titles, text, or account identifiers.
 
-Email verification is not implemented.
+Email verification is required for new registrations.
 
 ## Community reports and admin decisions
 
@@ -163,3 +167,17 @@ Remove-Item Env:DEPHISH_REPORT_DATABASE_TEST
 ```
 
 The test covers publication, retraction, multiple supporting reports, stale revisions, concurrent admin decisions, rollback, and expiry without touching application records.
+
+### Persistent ownership and guest account linking
+
+The API derives account ownership exclusively from the verified session. Request-body `userId`, `guestId`, `submittedBy`, and migration flags never control ownership. Approval (`verified`), rejection, and reopening update the same community report; published threat indicators retain their `reportId` link to that report.
+
+Guests receive a 256-bit random identifier in the signed `dephish.guest` HttpOnly cookie (one-year lifetime, path `/api/`, Secure in production). IP addresses are used only for existing rate limits, not ownership. The frontend already includes cookies for auth, scan, report, and history requests. Clearing/blocking cookies, using another browser, or rotating `SESSION_SECRET` can remove proof of guest ownership. Production cross-site deployments depend on the browser allowing the API's cookies; a same-site deployment avoids third-party cookie restrictions.
+
+Successful signup or login claims the browser's guest scans and reports before returning success. A MongoDB transaction binds the `guest_identities` record to one account and updates both collections, filtering on `guestId` and null `userId`. All report statuses are included. Existing owners cannot be overwritten. Guest submissions serialize through that same record, so a scan finishing after login inherits the claimed account. Retrying a claim is safe, and a different account cannot reclaim that identifier. Login and logout rotate the browser's guest cookie for subsequent anonymous use. No public claim endpoint or client-supplied guest identifier is accepted.
+
+This uses MongoDB replica-set transactions (as already required for report approval); standalone MongoDB is unsupported. Migration failures return an error rather than silently completing login without history. If signup created the account before a migration failure, retry by logging in with that account. Original consent records remain immutable with the original guest identity. Migration preserves report IDs, moderation status, audit logs, and original expiration deadlines; it does not extend retention. Migrated records appear in the existing account history and dashboard queries.
+
+Legacy records remain readable without the new fields. Existing authenticated ownership is preserved. Anonymous records created before guest tracking cannot be safely assigned to a browser and are not automatically claimed. No IP-based or blanket ownership backfill is performed.
+
+Run `npm test` for route/security tests. Set `DEPHISH_REPORT_DATABASE_TEST=1` and run `node --test tests/ownershipDatabase.integration.test.js tests/reportDatabase.integration.test.js` to verify real transactions, competing claims, rollback, late submissions, and review identity using isolated temporary collections in the configured database.

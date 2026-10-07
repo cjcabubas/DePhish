@@ -2,7 +2,7 @@ const apiBase = (import.meta.env?.VITE_API_URL || '').replace(/\/$/, '');
 
 export async function authRequest(path, payload) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), 45000);
   try {
     const response = await fetch(`${apiBase}/api/auth/${path}`, {
       method: payload === undefined ? 'GET' : 'POST', credentials: 'include',
