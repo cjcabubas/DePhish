@@ -148,3 +148,33 @@
 .profileDetails dt { color: #64746e; font-size: 14px; }
 .profileDetails dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .accountSettings .authCard { width: 100%; max-width: none; margin: 24px 0; box-sizing: border-box; }
+
+/* Account security follows the same compact card layout as Profile. */
+.securityPanel { margin-top: 20px; padding: 24px; }
+.profileDetails h2, .securityHeading h2 { margin: 0; font: 700 18px 'Plus Jakarta Sans', sans-serif; }
+.securityHeading { display: flex; align-items: center; gap: 12px; }
+.securityIcon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 11px; color: var(--teal); background: #edf8f5; }
+.securityPanel p { font-size: 14px; line-height: 1.6; color: var(--muted); }
+.securityHeading p { margin: 4px 0 0; }
+.securityOverview { display: flex; align-items: center; gap: 20px; margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+.securityOverview > div { flex: 1; }
+.securityPanel h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.securityOverview h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.securityOverview p { margin: 8px 0 0; }
+.securityOverview > button { flex: none; }
+.securityStatus { padding: 3px 9px; border-radius: 20px; color: var(--muted); background: #f0f3f4; font-size: 11px; line-height: 1.4; }
+.securityStatus.isEnabled { color: #096f61; background: #e1f4ed; }
+.securityForm { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+.securityStep { display: block; margin-bottom: 8px; color: var(--teal); font-size: 12px; font-weight: 700; }
+.securityForm > p { margin: 8px 0 18px; }
+.securityForm label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.securityForm input { width: 100%; min-width: 0; padding: 12px 14px; border: 1px solid #dce5e6; border-radius: 9px; background: #fcfdfd; color: var(--ink); font: 16px/1.4 'DM Sans', sans-serif; }
+.securityForm .passwordField input { padding-right: 46px; }
+.securityForm .securityCode { max-width: 240px; font-size: 22px; letter-spacing: 6px; }
+.securityActions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.securityResend { display: block; margin-top: 10px; padding: 6px 0; border: 0; background: none; color: var(--teal); font: 600 13px 'DM Sans', sans-serif; cursor: pointer; }
+.securityPanel button:disabled { opacity: .5; cursor: not-allowed; }
+.securityPanel input:focus-visible, .securityPanel button:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+.securityPanel .securityNotice { margin: 18px 0 0; padding: 12px 14px; background: var(--pale); border-radius: 9px; color: #25665d; }
+.securityPanel .scanError { color: #a73737; }
+@media (max-width: 480px) { .securityPanel, .profileDetails { padding: 20px; } .securityOverview { align-items: flex-start; flex-direction: column; gap: 14px; } .securityActions { flex-direction: column; } .securityActions button { width: 100%; } }
