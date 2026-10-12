@@ -2,6 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Flag, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { TermsBox } from './TermsBox';
+import { reportRead } from '../services/reportNotifications';
+
+export function ReportNotificationDot() {
+  return <span className="reportNotificationDot" role="img" aria-label="Unread report updates" title="Unread report updates"/>;
+}
 
 const statusLabel = status => ({ pending: 'Pending', verified: 'Verified', rejected: 'Rejected' }[status] || status);
 const kindLabel = kind => ({ url: 'URL', domain: 'Domain', email: 'Sender email', phone: 'Phone number' }[kind] || kind);
@@ -30,7 +35,7 @@ function Pagination({ page, total, onChange, busy }) {
     <span>Page {page} · {total} {total === 1 ? 'item' : 'items'}</span><button type="button" className="outline" disabled={busy || page * 20 >= total} onClick={() => onChange(page + 1)}>Next</button></div>;
 }
 
-export function Report({ source: initialSource, authenticated }) {
+export function Report({ source: initialSource, authenticated, unreadCount = 0 }) {
   const [source, setSource] = useState(initialSource);
   const [form, setForm] = useState({ message: source?.message || '', suspiciousUrl: '', senderEmail: '', phone: '', details: '' });
   const [consent, setConsent] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(null);
@@ -47,7 +52,7 @@ export function Report({ source: initialSource, authenticated }) {
   }
   return <section className="content narrow"><div className="eyebrow"><span/>COMMUNITY PROTECTION</div><h1>Report Scam</h1>
     <p className="lead">Submit a suspicious message or contact for admin review.</p>
-    {authenticated && <div className="reportTabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Submit a report</button><button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My reports</button></div>}
+    {authenticated && <div className="reportTabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Submit a report</button><button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My reports{unreadCount > 0 && <ReportNotificationDot/>}</button></div>}
     {tab === 'mine' ? <ReportQueue/> : saved ? <section className="panel reportReceipt" role="status"><ShieldCheck/><h2>Report submitted</h2><p>Your report is pending admin review. No threat indicators have been published.</p><p>Reference: {saved._id}</p><Assessment report={saved}/>
       {!authenticated && <p>Sign in or create an account in this browser to add your guest reports to My reports. Keep browser cookies until you sign in; reports expire after 30 days.</p>}
       <button className="outline" onClick={() => { setSaved(null); setSource(null); }}>Submit another report</button></section>
@@ -92,14 +97,29 @@ function ReportQueue({ admin = false }) {
   const [data, setData] = useState(null), [busy, setBusy] = useState(true), [error, setError] = useState('');
   useEffect(() => {
     let active = true; setBusy(true); setError(''); setData(null);
-    api.reports.list({ admin, status, page }).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
-    return () => { active = false; };
+    let request = 0;
+    const load = () => {
+      const current = ++request;
+      api.reports.list({ admin, status, page }).then(value => { if (active && current === request) { setData(value); setError(''); } }).catch(error => { if (active && current === request) setError(error.message); }).finally(() => { if (active && current === request) setBusy(false); });
+    };
+    load();
+    const timer = !admin && setInterval(load, 30000);
+    window.addEventListener('focus', load);
+    window.addEventListener('report-read', load);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', load); window.removeEventListener('report-read', load); };
   }, [admin, status, page, refresh]);
+  async function read(report) {
+    try {
+      await api.reports.markRead(report._id, report.revision);
+      setData(value => value && ({ ...value, reports: value.reports.map(item => item._id === report._id && item.revision === report.revision ? { ...item, unread: false } : item) }));
+      reportRead();
+    } catch (error) { setError(error.message); }
+  }
   return <div aria-busy={busy}><div className="reportFilters"><label>Status <select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}><option value="">All reports</option>{['pending', 'verified', 'rejected'].map(value => <option value={value} key={value}>{statusLabel(value)}{data ? ` (${data.counts[value]})` : ''}</option>)}</select></label>
     <button className="outline" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
     {busy && <p role="status">Loading reports…</p>}{error && <p role="alert" className="scanError">{error}</p>}
     {data && <>{!data.reports.length && <p className="dashboardEmpty">No {status || 'submitted'} reports to display.</p>}
-      {data.reports.map(report => <details className="panel reportCard" key={`${report._id}-${report.revision}`}><summary><Status value={report.status}/><b>{report.content.message?.slice(0, 80) || report.content.suspiciousUrl || report.content.senderEmail || report.content.phone || 'Scam report'}</b><span>{new Date(report.createdAt).toLocaleString()}</span></summary>
+      {data.reports.map(report => <details className={`panel reportCard${!admin && report.unread ? ' unread' : ''}`} key={`${report._id}-${report.revision}`} onToggle={event => { if (event.target === event.currentTarget && event.currentTarget.open && !admin && report.unread) read(report); }}><summary><Status value={report.status}/><b>{report.content.message?.slice(0, 80) || report.content.suspiciousUrl || report.content.senderEmail || report.content.phone || 'Scam report'}</b>{!admin && report.unread && <span className="reportUnreadLabel"><ReportNotificationDot/>Unread</span>}<span>{new Date(report.createdAt).toLocaleString()}</span></summary>
         <p className="dashboardNote">Reference: {report._id}{report.sourceScanId ? ` · Saved scan: ${report.sourceScanId}` : ''}</p><Content report={report}/><Assessment report={report}/>
         {report.reviewedAt && <p className="reportReviewNote"><b>Latest admin review · {new Date(report.reviewedAt).toLocaleString()}</b><br/>{report.reviewNote}</p>}
         {admin && report.reviewLog?.length > 0 && <details className="analysisDetails"><summary>Status history</summary>{report.reviewLog.map((entry, index) => <p key={index}><b>{statusLabel(entry.status)} · {new Date(entry.at).toLocaleString()}</b><br/>{entry.note}{entry.emailReviewed && <><br/>Selected sender emails reviewed for spoofing.</>}</p>)}</details>}

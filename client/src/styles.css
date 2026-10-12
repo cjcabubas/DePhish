@@ -178,3 +178,5 @@
 .securityPanel .securityNotice { margin: 18px 0 0; padding: 12px 14px; background: var(--pale); border-radius: 9px; color: #25665d; }
 .securityPanel .scanError { color: #a73737; }
 @media (max-width: 480px) { .securityPanel, .profileDetails { padding: 20px; } .securityOverview { align-items: flex-start; flex-direction: column; gap: 14px; } .securityActions { flex-direction: column; } .securityActions button { width: 100%; } }
+
+.reportNotificationDot{display:inline-block;width:8px;height:8px;flex:none;border-radius:50%;background:#dc5954;vertical-align:middle}.reportTabs button{display:inline-flex;align-items:center;gap:8px}.reportCard.unread{background:var(--pale);border-color:#aad5ce}.reportUnreadLabel{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap}.reportCard>summary:focus-visible{outline:2px solid var(--teal);outline-offset:6px;border-radius:4px}

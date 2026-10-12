@@ -21,6 +21,13 @@ async function setup(t) {
   const reports = {
     create: async fields => { const report = { ...fields, _id: String(records.size + 10).padStart(24, '0'), createdAt: new Date() }; records.set(report._id, report); return report; },
     find: async id => records.get(id),
+    unreadCount: async userId => [...records.values()].filter(row => row.userId === userId && row.unread).length,
+    markRead: async (id, userId, revision) => {
+      const report = records.get(id);
+      if (!report || report.userId !== userId || report.revision !== revision) return null;
+      report.unread = false;
+      return report;
+    },
     list: async ({ userId, status, page }) => {
       const rows = [...records.values()].filter(row => !userId || row.userId === userId);
       const filtered = rows.filter(row => !status || row.status === status);
@@ -29,7 +36,7 @@ async function setup(t) {
     review: async (id, revision, decision, reviewer) => {
       const report = records.get(id);
       if (!report || report.revision !== revision) return null;
-      Object.assign(report, { status: decision.status, revision: revision + 1, reviewNote: decision.note, reviewedBy: reviewer,
+      Object.assign(report, { status: decision.status, unread: decision.status !== 'pending', revision: revision + 1, reviewNote: decision.note, reviewedBy: reviewer,
         approvedIndicatorIds: decision.indicators.map(item => item.id) });
       threats.set(id, decision.indicators);
       return report;
@@ -224,4 +231,31 @@ test('login claims only the signed browser guest cookie; failed login and forged
   const login = await app.request('/api/auth/login', credentials, cookie);
   assert.equal(login.status, 200);
   assert.equal((await (await app.request('/api/reports', undefined, sessionCookie(login))).json()).total, 1);
+});
+
+
+test('review notifications are private and reading an old revision cannot dismiss a new decision', async t => {
+  const app = await setup(t);
+  const owner = await app.signup('owner@example.com'), other = await app.signup('other@example.com'), admin = await app.signup('admin@example.com', true);
+  const { report } = await (await app.request('/api/reports', { ...consent, message: 'Suspicious message' }, owner)).json();
+  const count = async cookie => (await (await app.request('/api/reports/unread', undefined, cookie)).json()).count;
+  const review = (revision, status) => app.request('/api/reports/' + report._id + '/status', { revision, status, note: 'Evidence reviewed.', indicatorIds: [] }, admin, 'PATCH');
+  const read = (revision, cookie = owner) => app.request('/api/reports/' + report._id + '/read', { revision }, cookie, 'PATCH');
+  assert.equal(await count(owner), 0);
+  assert.equal((await app.request('/api/reports/unread')).status, 401);
+  assert.equal((await review(0, 'verified')).status, 200);
+  assert.equal(await count(owner), 1);
+  assert.equal(await count(other), 0);
+  assert.equal((await read(1, other)).status, 409);
+  assert.equal((await read(1)).status, 200);
+  assert.equal(await count(owner), 0);
+  assert.equal((await review(1, 'rejected')).status, 200);
+  assert.equal((await read(1)).status, 409);
+  assert.equal(await count(owner), 1);
+  assert.equal((await read(-1)).status, 400);
+  assert.equal((await read(2)).status, 200);
+  assert.equal((await read(2)).status, 200);
+  assert.equal(await count(owner), 0);
+  assert.equal((await review(2, 'pending')).status, 200);
+  assert.equal(await count(owner), 0);
 });

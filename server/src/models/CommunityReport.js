@@ -17,6 +17,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
     candidates: [candidateSchema],
     status: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending', required: true },
     revision: { type: Number, default: 0 },
+    unread: { type: Boolean, default: false },
     approvedIndicatorIds: [String], reviewNote: String,
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null }, reviewedAt: Date,
     reviewLog: [{ _id: false, status: String, note: String, emailReviewed: Boolean,
@@ -44,6 +45,9 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
     claimGuest: (guestId, userId, session) => Report.updateMany({ guestId, userId: null },
       { $set: { userId, submittedBy: 'user', originallySubmittedAsGuest: true } }, { session }),
     find: id => Report.findOne({ _id: id, ...live() }).lean(),
+    unreadCount: userId => Report.countDocuments({ userId, unread: true, ...live() }),
+    markRead: (id, userId, revision) => Report.findOneAndUpdate(
+      { _id: id, userId, revision, ...live() }, { $set: { unread: false } }, { new: true }).lean(),
     async list({ userId, status, page = 1 }) {
       const scope = { ...live(), ...(userId ? { userId } : {}) };
       const filter = { ...scope, ...(status ? { status } : {}) };
@@ -59,7 +63,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
       // No nontransactional fallback: a failed transaction leaves the previous decision intact.
       return mongoose.connection.transaction(async session => {
         const report = await Report.findOneAndUpdate({ _id: id, revision, ...live() }, {
-          $set: { status: decision.status, approvedIndicatorIds: decision.indicators.map(item => item.id),
+          $set: { status: decision.status, unread: decision.status !== 'pending', approvedIndicatorIds: decision.indicators.map(item => item.id),
             reviewNote: decision.note, reviewedBy: reviewer, reviewedAt: new Date() }, $inc: { revision: 1 },
           $push: { reviewLog: { $each: [{ status: decision.status, note: decision.note, emailReviewed: decision.emailReviewed,
             indicatorIds: decision.indicators.map(item => item.id), reviewer, at: new Date() }], $slice: -50 } },

@@ -19,3 +19,17 @@ test('reports use their own endpoints with admin status decisions and credential
     await assert.rejects(api.reports.review('id', {}), /Another admin changed/);
   } finally { globalThis.fetch = original; }
 });
+
+
+test('unread updates and reading use credentialed report endpoints with the displayed revision', async () => {
+  const original = globalThis.fetch, calls = [];
+  globalThis.fetch = async (url, options) => { calls.push({ url, ...options }); return { ok: true, json: async () => ({ count: 1 }) }; };
+  try {
+    assert.equal((await api.reports.unread()).count, 1);
+    await api.reports.markRead('report-id', 3);
+    assert.deepEqual(calls.map(call => call.url), ['/api/reports/unread', '/api/reports/report-id/read']);
+    assert.ok(calls.every(call => call.credentials === 'include'));
+    assert.equal(calls[1].method, 'PATCH');
+    assert.deepEqual(JSON.parse(calls[1].body), { revision: 3 });
+  } finally { globalThis.fetch = original; }
+});

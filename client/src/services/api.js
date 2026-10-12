@@ -95,6 +95,8 @@ async function reportRequest(path = '', { method = 'GET', body } = {}) {
 
 export const api = {
   reports: {
+    unread: () => reportRequest('/unread'),
+    markRead: (id, revision) => reportRequest(`/${encodeURIComponent(id)}/read`, { method: 'PATCH', body: { revision } }),
     submit: body => reportRequest('', { method: 'POST', body }),
     list: ({ admin = false, status = '', page = 1 } = {}) => reportRequest(`${admin ? '/admin' : ''}?status=${encodeURIComponent(status)}&page=${page}`),
     review: (id, body) => reportRequest(`/${encodeURIComponent(id)}/status`, { method: 'PATCH', body }),

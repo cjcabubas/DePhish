@@ -32,6 +32,18 @@ export function reportRoutes({ users, scans, reports, consents, ownership, origi
     } catch (error) { next(error); }
   };
   router.get('/', requireAuth(users), list(false));
+  router.get('/unread', requireAuth(users), async (req, res, next) => {
+    try { res.json({ count: await reports.unreadCount(String(req.user._id)) }); } catch (error) { next(error); }
+  });
+  router.patch('/:id/read', requireAuth(users), async (req, res, next) => {
+    try {
+      if (!/^[a-f\d]{24}$/i.test(req.params.id) || !Number.isInteger(req.body.revision) || req.body.revision < 0)
+        throw reportError(400, 'A valid report reference and revision are required.');
+      const report = await reports.markRead(req.params.id, String(req.user._id), req.body.revision);
+      if (!report) throw reportError(409, 'Report changed or is unavailable. Refresh your reports and try again.');
+      res.json({ report });
+    } catch (error) { next(error); }
+  });
   router.get('/admin', requireAuth(users), requireRole('admin'), list(true));
   router.get('/threat-indicators', requireAuth(users), requireRole('admin'), async (req, res, next) => {
     try { res.json(await reports.threats(page(req))); } catch (error) { next(error); }
