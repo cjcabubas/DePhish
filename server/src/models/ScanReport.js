@@ -26,7 +26,7 @@ export function createScanRepository(collectionName = 'scan_reports') {
       { $set: { userId, submittedBy: 'user', originallySubmittedAsGuest: true, source: 'account' } }, { session }),
     findOwned: (id, userId) => Scan.findOne({ _id: id, userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).lean(),
     list: (userId, limit) => Scan.find({ userId, $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }).sort({ createdAt: -1 }).limit(limit).lean(),
-    async stats(userId, since) {
+    async stats(userId, since, end = new Date()) {
       const match = userId ? { userId: new mongoose.Types.ObjectId(userId) } : { $or: [{ userId: { $type: 'objectId' } }, { source: 'guest' }] };
       const countWhere = prediction => ({ $sum: { $cond: [{ $eq: ['$result.prediction', prediction] }, 1, 0] } });
       const [data] = await Scan.aggregate([
@@ -34,7 +34,7 @@ export function createScanRepository(collectionName = 'scan_reports') {
         { $facet: {
           totals: [{ $group: { _id: null, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }],
           accounts: [{ $match: { userId: { $type: 'objectId' } } }, { $group: { _id: '$userId' } }, { $count: 'count' }],
-          activity: [{ $match: { createdAt: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } }, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }, { $sort: { _id: 1 } }],
+          activity: [{ $match: { createdAt: { ...(since ? { $gte: since } : {}), $lte: end } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } }, total: { $sum: 1 }, phishing: countWhere('Phishing'), suspicious: countWhere('Suspicious'), legitimate: countWhere('Legitimate') } }, { $sort: { _id: 1 } }],
           indicators: [{ $project: { categories: { $setUnion: [{ $map: { input: { $cond: [{ $isArray: '$result.detected_indicators' }, '$result.detected_indicators', []] }, as: 'indicator', in: '$$indicator.category' } }, []] } } }, { $unwind: '$categories' }, { $match: { categories: { $type: 'string', $ne: '' } } }, { $group: { _id: '$categories', count: { $sum: 1 } } }, { $sort: { count: -1, _id: 1 } }, { $limit: 5 }],
         } },
       ]).option({ maxTimeMS: 10000 });

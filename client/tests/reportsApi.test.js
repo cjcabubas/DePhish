@@ -15,6 +15,12 @@ test('reports use their own endpoints with admin status decisions and credential
     assert.ok(calls.every(call => call.credentials === 'include'));
     assert.equal(calls[3].method, 'PATCH'); assert.equal(calls[3].headers['X-DePhish-Client'], 'web');
     assert.equal(JSON.parse(calls[3].body).revision, 0);
+    await api.reports.threats(2, { kind: 'url', search: 'example.com/a?x=1&y=2', days: '7' });
+    const query = new URL(calls.at(-1).url, 'http://localhost').searchParams;
+    assert.equal(query.get('page'), '2');
+    assert.equal(query.get('kind'), 'url');
+    assert.equal(query.get('search'), 'example.com/a?x=1&y=2');
+    assert.equal(query.get('days'), '7');
     globalThis.fetch = async () => ({ ok: false, json: async () => ({ message: 'Another admin changed this report.' }) });
     await assert.rejects(api.reports.review('id', {}), /Another admin changed/);
   } finally { globalThis.fetch = original; }

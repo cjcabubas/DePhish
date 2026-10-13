@@ -77,19 +77,23 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
         return report;
       });
     },
-    async threats(page = 1) {
+    async threats(page = 1, { kind = '', search = '', days = 0 } = {}) {
+      const typeFilter = kind ? [{ $match: { '_id.kind': kind } }] : [];
       const pipeline = [
         { $match: live() },
         { $lookup: { from: collectionName, localField: 'reportId', foreignField: '_id', as: 'report' } },
         { $unwind: '$report' },
         { $match: { 'report.status': 'verified', 'report.expiresAt': { $gt: new Date() } } },
         { $group: { _id: { kind: '$kind', value: '$value' }, reportIds: { $addToSet: '$reportId' }, verifiedAt: { $max: '$updatedAt' } } },
+        ...(search ? [{ $match: { '_id.value': { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } }] : []),
+        ...(days ? [{ $match: { verifiedAt: { $gte: new Date(Date.now() - days * 86400000) } } }] : []),
         { $sort: { verifiedAt: -1, '_id.kind': 1, '_id.value': 1 } },
-        { $facet: { items: [{ $skip: (page - 1) * 20 }, { $limit: 20 }], count: [{ $count: 'total' }] } },
+        { $facet: { items: [...typeFilter, { $skip: (page - 1) * 20 }, { $limit: 20 }], count: [...typeFilter, { $count: 'total' }],
+          distribution: [{ $group: { _id: '$_id.kind', count: { $sum: 1 } } }, { $sort: { _id: 1 } }] } },
       ];
       const [result] = await Threat.aggregate(pipeline).option({ maxTimeMS: 10000 });
       return { indicators: result.items.map(item => ({ ...item._id, reportIds: item.reportIds, verifiedAt: item.verifiedAt })),
-        total: result.count[0]?.total || 0, page };
+        total: result.count[0]?.total || 0, page, distribution: result.distribution.map(item => ({ kind: item._id, count: item.count })) };
     },
   };
 }

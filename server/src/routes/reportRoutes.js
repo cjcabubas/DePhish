@@ -46,7 +46,12 @@ export function reportRoutes({ users, scans, reports, consents, ownership, origi
   });
   router.get('/admin', requireAuth(users), requireRole('admin'), list(true));
   router.get('/threat-indicators', requireAuth(users), requireRole('admin'), async (req, res, next) => {
-    try { res.json(await reports.threats(page(req))); } catch (error) { next(error); }
+    try {
+      const { kind = '', search = '', days = '' } = req.query;
+      if (!['', 'url', 'domain', 'email', 'phone'].includes(kind) || !['', '7', '30', '90'].includes(days) || typeof search !== 'string' || search.length > 200)
+        throw reportError(400, 'Invalid indicator filters.');
+      res.json(await reports.threats(page(req), { kind, search: search.trim(), days: Number(days) }));
+    } catch (error) { next(error); }
   });
   router.post('/', apiRateLimit({ limit: 5, message: 'Too many report submissions. Please try again in a minute.' }),
     (req, res, next) => req.session?.userId ? requireAuth(users)(req, res, next) : next(), async (req, res, next) => {

@@ -11,6 +11,17 @@ const consent = { tosAccepted: true, termsVersion: SCAN_TERMS.version };
 const sourceId = 'a'.repeat(24);
 const analysis = { risk_score: 82, prediction: 'Phishing', phishing_type: 'Credential harvesting', detected_indicators: [], detected_urls: [] };
 
+test('threat indicator filters require admin access and reject malformed values', async t => {
+  const app = await setup(t);
+  const path = '/api/reports/threat-indicators';
+  assert.equal((await app.request(path)).status, 401);
+  const admin = await app.signup('filters@example.com', true);
+  for (const query of ['kind=invalid', 'days=-1', 'days=8', 'search=x&search=y', `search=${'x'.repeat(201)}`, 'kind=url&kind=email']) {
+    assert.equal((await app.request(`${path}?${query}`, null, admin)).status, 400, query);
+  }
+  assert.equal((await app.request(`${path}?kind=domain&days=7&search=example.com`, null, admin)).status, 200);
+});
+
 async function setup(t) {
   const accounts = new Map(), records = new Map(), threats = new Map();
   const claims = new Map();

@@ -76,3 +76,77 @@ test('30-day UTC activity fills empty dates across a year boundary and preserves
   await dashboardController(undefined)({}, { status: value => { status = value; return { json() {} }; } });
   assert.equal(status, 503);
 });
+
+test('all activity ranges use inclusive UTC dates, preserve KPIs, and exclude future scans', async () => {
+  const now = new Date('2028-03-01T08:00:00Z');
+  const dates = ['2027-11-01T00:00:00Z', '2027-12-03T00:00:00Z', '2028-02-01T00:00:00Z', '2028-02-23T23:59:59Z', '2028-02-24T00:00:00Z', '2028-03-01T08:00:00Z', '2028-03-01T08:00:01Z'];
+  for (const [range, start, expected] of [
+    ['7', '2028-02-24', 2], ['30', '2028-02-01', 4], ['90', '2027-12-03', 5], ['all', '2027-11-01', 6],
+  ]) {
+    let data;
+    const scans = { stats: async (owner, since, end) => {
+      assert.equal(owner, null);
+      assert.equal(end.toISOString(), now.toISOString());
+      assert.equal(since?.toISOString().slice(0, 10) ?? null, range === 'all' ? null : start);
+      const byDate = new Map();
+      for (const timestamp of dates) {
+        const date = new Date(timestamp);
+        if ((since && date < since) || date > end) continue;
+        const key = timestamp.slice(0, 10);
+        const row = byDate.get(key) || { date: key, total: 0, phishing: 0, suspicious: 0, legitimate: 0 };
+        row.total++; row.suspicious++; byDate.set(key, row);
+      }
+      return { ...empty, total: 7, suspicious: 7, indicators: [{ category: 'urgency_pressure', count: 7 }], activity: [...byDate.values()] };
+    } };
+    await dashboardController(scans, { admin: true, now: () => now })({ query: { range } }, { json: value => { data = value; } });
+    assert.equal(data.activity[0].date, start);
+    assert.equal(data.activity.at(-1).date, '2028-03-01');
+    assert.equal(data.activity.reduce((sum, row) => sum + row.total, 0), expected);
+    assert.equal(data.activity.length, range === 'all' ? 122 : Number(range));
+    assert.equal(data.total, 7);
+    assert.deepEqual(data.indicators, [{ category: 'urgency_pressure', count: 7 }]);
+    assert.equal(data.period.timezone, 'UTC');
+    assert.equal(data.period.range, range);
+  }
+});
+
+test('empty ranges remain valid and unsupported ranges never query the database', async () => {
+  for (const range of ['7', '30', '90', 'all']) {
+    let data;
+    await dashboardController({ stats: async () => empty }, { admin: true })({ query: { range } }, { json: value => { data = value; } });
+    assert.equal(data.activity.length, range === 'all' ? 0 : Number(range));
+    assert.equal(data.activity.reduce((sum, row) => sum + row.total, 0), 0);
+    if (range === 'all') assert.equal(data.period.start, null);
+  }
+  for (const range of ['0', '365', '', 'ALL', ['7', '90'], { $gt: '' }]) {
+    let status;
+    await dashboardController({ stats: async () => assert.fail('must not query') })({ query: { range } }, {
+      status: value => { status = value; return { json() {} }; },
+    });
+    assert.equal(status, 400);
+  }
+});
+
+test('MongoDB aggregation applies range bounds only to activity and groups dates in UTC', async () => {
+  const { default: mongoose } = await import('mongoose');
+  const { createScanRepository } = await import('../src/models/ScanReport.js');
+  const repository = createScanRepository();
+  const model = mongoose.models.ScanReport;
+  const original = model.aggregate;
+  const end = new Date('2028-03-01T08:00:00Z');
+  try {
+    for (const days of [7, 30, 90, null]) {
+      const since = days ? new Date(Date.UTC(2028, 2, 2 - days)) : null;
+      model.aggregate = pipeline => {
+        const facets = pipeline[1].$facet;
+        assert.deepEqual(facets.activity[0].$match.createdAt, { ...(since ? { $gte: since } : {}), $lte: end });
+        assert.equal(facets.activity[1].$group._id.$dateToString.timezone, 'UTC');
+        assert.deepEqual(facets.activity.at(-1), { $sort: { _id: 1 } });
+        for (const key of ['totals', 'accounts', 'indicators']) assert.ok(!JSON.stringify(facets[key]).includes('createdAt'));
+        assert.ok(JSON.stringify(pipeline[0]).includes('expiresAt'));
+        return { option: async () => [{ totals: [], accounts: [], activity: [], indicators: [] }] };
+      };
+      assert.deepEqual((await repository.stats(null, since, end)).activity, []);
+    }
+  } finally { model.aggregate = original; }
+});

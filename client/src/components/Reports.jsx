@@ -3,6 +3,7 @@ import { Flag, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { TermsBox } from './TermsBox';
 import { reportRead } from '../services/reportNotifications';
+import { ThreatPie } from './ThreatPie';
 
 export function ReportNotificationDot() {
   return <span className="reportNotificationDot" role="img" aria-label="Unread report updates" title="Unread report updates"/>;
@@ -134,15 +135,24 @@ export function ReportManagement() {
 
 export function ThreatIndicators() {
   const [page, setPage] = useState(1), [refresh, setRefresh] = useState(0), [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(true);
+  const [kind, setKind] = useState(''), [days, setDays] = useState(''), [search, setSearch] = useState(''), [draft, setDraft] = useState('');
+  function selectKind(value) { setKind(value); setPage(1); }
+  function resetFilters() { setKind(''); setDays(''); setSearch(''); setDraft(''); setPage(1); }
   useEffect(() => {
     let active = true; setBusy(true); setError(''); setData(null);
-    api.reports.threats(page).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
+    api.reports.threats(page, { kind, days, search }).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [page, refresh]);
+  }, [page, refresh, kind, days, search]);
   return <section className="content"><div className="eyebrow"><span/>VERIFIED INTELLIGENCE</div><h1>Threat Indicators</h1><p className="lead">Only individually approved indicators from verified reports appear here.</p>
-    <button className="outline" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
+    <form className="threatFilters" onSubmit={event => { event.preventDefault(); setSearch(draft.trim()); setPage(1); }}>
+      <label>Search indicators<input type="search" maxLength={200} placeholder="Search URL, domain, email or phone" value={draft} onChange={event => setDraft(event.target.value)}/></label>
+      <label>Indicator type<select value={kind} onChange={event => selectKind(event.target.value)}><option value="">All types</option>{['url', 'domain', 'email', 'phone'].map(value => <option key={value} value={value}>{kindLabel(value)}</option>)}</select></label>
+      <label>Last verified<select value={days} onChange={event => { setDays(event.target.value); setPage(1); }}><option value="">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></label>
+      <button className="primary" type="submit">Search</button><button className="outline" type="button" onClick={resetFilters}>Reset</button>
+      <button className="outline" type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
+    </form>
     {busy && <p role="status">Loading verified indicators…</p>}{error && <p role="alert" className="scanError">{error}</p>}
-    {data && <>{!data.indicators.length ? <p className="dashboardEmpty">No verified threat indicators yet.</p> : <div className="dashboardTableWrap"><table><thead><tr><th>Type</th><th>Indicator</th><th>Verified reports</th><th>Last verified</th></tr></thead><tbody>{data.indicators.map(item => <tr key={`${item.kind}:${item.value}`}><td>{kindLabel(item.kind)}</td><td className="threatValue">{item.value}</td><td>{item.reportIds.length}</td><td>{new Date(item.verifiedAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+    {data && <><ThreatPie distribution={data.distribution || []} selected={kind} onSelect={selectKind}/><p className="dashboardNote" role="status">{data.total.toLocaleString()} matching indicators{search && ` for “${search}”`}{kind && ` · ${kindLabel(kind)}`}</p>{!data.indicators.length ? <p className="dashboardEmpty">{kind || days || search ? 'No verified indicators match your filters. Try resetting the filters.' : 'No verified threat indicators yet.'}</p> : <div className="dashboardTableWrap"><table><thead><tr><th>Type</th><th>Indicator</th><th>Verified reports</th><th>Last verified</th></tr></thead><tbody>{data.indicators.map(item => <tr key={`${item.kind}:${item.value}`}><td>{kindLabel(item.kind)}</td><td className="threatValue">{item.value}</td><td>{item.reportIds.length}</td><td>{new Date(item.verifiedAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
       <Pagination page={page} total={data.total} onChange={setPage} busy={busy}/></>}
   </section>;
 }
