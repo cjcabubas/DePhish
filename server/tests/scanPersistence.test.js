@@ -23,15 +23,17 @@ test('saves complete assessed result under authenticated owner and tolerates fai
  const res={json(value){output=value;},status(){return this;}};
  try {
   const controller=scanController('http://localhost:8000',{create:async fields=>{saved=fields;return {_id:'scan1'};}}, undefined, consents);
-  await controller({body:{...consentFields,text:'Meeting',type:'email'},user:{_id:'owner'}},res);
+  await controller({body:{...consentFields,text:'Meeting',type:'email',userId:'forged',guestId:'forged'},user:{_id:'owner'},guestId:'guest_browser'},res);
   assert.equal(saved.consentId,'000000000000000000000002'); assert.equal(output.consent.termsVersion,SCAN_TERMS.version); assert.ok(output.consent.acceptedAt instanceof Date);
   assert.equal(saved.userId,'owner'); assert.equal(saved.result.scoring_version,'4.0.0-independent-analyzers');
+  assert.equal(saved.guestId,null); assert.equal(saved.submittedBy,'user'); assert.equal(saved.originallySubmittedAsGuest,false);
   assert.deepEqual(saved.result.link_checks,[]); assert.equal(output.persistence.status,'saved');
   assert.deepEqual(saved.result.detected_indicators,model.detected_indicators);
   assert.deepEqual(saved.result.model_explanation,model.model_explanation);
   assert.equal(saved.result.analysis_version,'2.0.0-independent-analyzers');
-  saved=null;await controller({body:{...consentFields,text:'Meeting',tosAccepted:true}},res);
+  saved=null;await controller({body:{...consentFields,text:'Meeting',tosAccepted:true,userId:'forged',guestId:'forged'},guestId:'guest_browser'},res);
   assert.equal(saved.userId,null); assert.equal(saved.source,'guest'); assert.equal(saved.message,'Meeting');
+  assert.equal(saved.guestId,'guest_browser'); assert.equal(saved.submittedBy,'guest'); assert.equal(saved.originallySubmittedAsGuest,true);
   assert.equal(saved.tosAcknowledged,true); assert.equal(output.persistence.status,'saved'); assert.equal(output.persistence.scope,'guest');
   await scanController('http://localhost:8000',{create:async()=>{throw new Error('private database error');}}, undefined, consents)({body:{...consentFields,text:'Meeting'},user:{_id:'owner'}},res);
   assert.equal(output.persistence.status,'unavailable');assert.equal(output.risk_score,20);assert.ok(!JSON.stringify(output).includes('private database'));

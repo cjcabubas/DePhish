@@ -15,8 +15,10 @@ test('auth uses cookie credentials, maps failures, and restores anonymous sessio
     assert.deepEqual(await authApi.login({ email: 'user@example.com', password: 'password' }), { user: { id: '1' } });
     globalThis.fetch = async () => ({ status: 401 });
     assert.deepEqual(await authApi.me(), { user: null });
-    globalThis.fetch = async () => ({ status: 503 });
+    globalThis.fetch = async () => new Response('Service unavailable', { status: 503 });
     await assert.rejects(authApi.signup({}), /not available/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ message: 'Email verification is not configured.' }), { status: 503 });
+    await assert.rejects(authApi.signup({}), /Email verification is not configured/);
     globalThis.fetch = async () => ({ status: 429, ok: false, json: async () => ({ message: 'Too many attempts' }) });
     await assert.rejects(authApi.login({}), /Too many attempts/);
     globalThis.fetch = async () => ({ status: 204 });

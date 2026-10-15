@@ -2,7 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Flag, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { TermsBox } from './TermsBox';
+import { reportRead } from '../services/reportNotifications';
+import { ThreatPie } from './ThreatPie';
 import { validateReport, validateReportField } from '../utils/validation';
+
+export function ReportNotificationDot() {
+  return <span className="reportNotificationDot" role="img" aria-label="Unread report updates" title="Unread report updates"/>;
+}
 
 const statusLabel = status => ({ pending: 'Pending', verified: 'Verified', rejected: 'Rejected' }[status] || status);
 const kindLabel = kind => ({ url: 'URL', domain: 'Domain', email: 'Sender email', phone: 'Phone number' }[kind] || kind);
@@ -31,13 +37,13 @@ function Pagination({ page, total, onChange, busy }) {
     <span>Page {page} · {total} {total === 1 ? 'item' : 'items'}</span><button type="button" className="outline" disabled={busy || page * 20 >= total} onClick={() => onChange(page + 1)}>Next</button></div>;
 }
 
-export function Report({ source: initialSource, authenticated }) {
+export function Report({ source: initialSource, authenticated, unreadCount = 0 }) {
   const [source, setSource] = useState(initialSource);
   const [form, setForm] = useState({ message: source?.message || '', suspiciousUrl: '', senderEmail: '', phone: '', details: '' });
   const [consent, setConsent] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(null);
   const [validation, setValidation] = useState({ fields: {}, formError: '' }), [touched, setTouched] = useState({});
   const [tab, setTab] = useState('new');
-  function updateField(key, value) { setForm(previous => ({ ...previous, [key]: value })); if (touched[key]) setValidation(validateReport({ ...form, [key]: value }, { hasSourceScan: Boolean(source?.sourceScanId) })); }
+  function updateField(key, value) { const next = { ...form, [key]: value }; setForm(next); if (touched[key]) setValidation(validateReport(next, { hasSourceScan: Boolean(source?.sourceScanId) })); }
   function blurField(key) { setTouched(previous => ({ ...previous, [key]: true })); setValidation(previous => ({ ...previous, fields: { ...previous.fields, [key]: validateReportField(key, form[key]) } })); }
   async function submit(event) {
     event.preventDefault();
@@ -54,17 +60,16 @@ export function Report({ source: initialSource, authenticated }) {
   }
   return <section className="content narrow"><div className="eyebrow"><span/>COMMUNITY PROTECTION</div><h1>Report Scam</h1>
     <p className="lead">Submit a suspicious message or contact for admin review.</p>
-    {authenticated && <div className="reportTabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Submit a report</button><button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My reports</button></div>}
+    {authenticated && <div className="reportTabs"><button className={tab === 'new' ? 'active' : ''} onClick={() => setTab('new')}>Submit a report</button><button className={tab === 'mine' ? 'active' : ''} onClick={() => setTab('mine')}>My reports{unreadCount > 0 && <ReportNotificationDot/>}</button></div>}
     {tab === 'mine' ? <ReportQueue/> : saved ? <section className="panel reportReceipt" role="status"><ShieldCheck/><h2>Report submitted</h2><p>Your report is pending admin review. No threat indicators have been published.</p><p>Reference: {saved._id}</p><Assessment report={saved}/>
-      {!authenticated && <p>Guest reports can be reviewed by admins. Sign in before future submissions to track their status in My reports.</p>}
+      {!authenticated && <p>Sign in or create an account in this browser to add your guest reports to My reports. Keep browser cookies until you sign in; reports expire after 30 days.</p>}
       <button className="outline" onClick={() => { setSaved(null); setSource(null); }}>Submit another report</button></section>
       : <form className="reportForm" noValidate onSubmit={submit} aria-busy={busy}>
         {source?.sourceScanId && <p className="reportSource">Reporting saved scan {source.sourceScanId}. Its saved, redacted message will be analyzed again. Add any missing sender or link details below.</p>}
         <p>Remove passwords, codes, and personal information that is not needed. Link analysis may contact submitted websites. Reports and review candidates are retained for up to 30 days; designated scam contacts are visible to admins for review.</p>
         {fields.map(([key, label, placeholder]) => key === 'message' && source?.sourceScanId ? null : <label key={key}>{label}
           {['message', 'details'].includes(key) ? <textarea value={form[key]} disabled={busy} placeholder={placeholder} onChange={event => updateField(key, event.target.value)} onBlur={() => blurField(key)}/>
-            : <input type={key === 'senderEmail' ? 'email' : key === 'phone' ? 'tel' : 'text'} value={form[key]} disabled={busy} placeholder={placeholder} onChange={event => updateField(key, event.target.value)} onBlur={() => blurField(key)}/>}
-          {touched[key] && validation.fields[key] && <span className="fieldError" role="alert">{validation.fields[key]}</span>}</label>)}
+            : <input type={key === 'senderEmail' ? 'email' : key === 'phone' ? 'tel' : 'text'} value={form[key]} disabled={busy} placeholder={placeholder} onChange={event => updateField(key, event.target.value)} onBlur={() => blurField(key)}/>} {touched[key] && validation.fields[key] && <span className="fieldError" role="alert">{validation.fields[key]}</span>}</label>)}
         <p className="dashboardNote">Provide at least one message, link, email, or phone. Combined content must be within 5,000 characters. Sender addresses can be spoofed; naming one does not establish fraud.</p>
         {validation.formError && <p className="fieldError" role="alert">{validation.formError}</p>}
         <TermsBox checked={consent} onChange={setConsent} disabled={busy}/>
@@ -76,7 +81,8 @@ export function Report({ source: initialSource, authenticated }) {
 
 function Review({ report, onSaved }) {
   const [selected, setSelected] = useState(report.approvedIndicatorIds || []), [emailReviewed, setEmailReviewed] = useState(false);
-  const [note, setNote] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [noteTouched, setNoteTouched] = useState(false), [noteError, setNoteError] = useState('');
+  const [note, setNote] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [noteTouched, setNoteTouched] = useState(false), [noteError, setNoteError] = useState('');
   const hasEmail = report.candidates.some(item => item.kind === 'email' && selected.includes(item.id));
   async function decide(status) {
     const validation = validateReportField('note', note); setNoteTouched(true); setNoteError(validation); if (validation) return;
@@ -90,9 +96,9 @@ function Review({ report, onSaved }) {
     {hasEmail && <label className="reportEmailReview"><input type="checkbox" checked={emailReviewed} disabled={busy} onChange={event => setEmailReviewed(event.target.checked)}/><span>I reviewed the selected sender addresses for spoofing and documented evidence connecting them to this scam below.</span></label>}
     <label className="reportNote">Review note<textarea value={note} disabled={busy} onChange={event => { const value = event.target.value; setNote(value); if (noteTouched) setNoteError(validateReportField('note', value)); }} onBlur={() => { setNoteTouched(true); setNoteError(validateReportField('note', note)); }} placeholder={hasEmail ? 'Explain the evidence for the sender addresses and your decision.' : 'Explain your decision or why the report needs another review.'}/>{noteTouched && noteError && <span className="fieldError" role="alert">{noteError}</span>}</label>
     {error && <p className="scanError" role="alert">{error}</p>}
-    <div className="reportDecisions"><button className="primary" disabled={busy || (hasEmail && !emailReviewed)} onClick={() => decide('verified')}>{busy ? 'Saving…' : 'Verify'}</button>
-      <button className="outline" disabled={busy} onClick={() => decide('rejected')}>Reject</button>
-      {report.status !== 'pending' && <button className="outline" disabled={busy} onClick={() => decide('pending')}>Reopen as pending</button>}</div>
+    <div className="reportDecisions"><button className="primary" disabled={busy || note.trim().length < 5 || (hasEmail && !emailReviewed)} onClick={() => decide('verified')}>{busy ? 'Saving…' : 'Verify'}</button>
+      <button className="outline" disabled={busy || note.trim().length < 5} onClick={() => decide('rejected')}>Reject</button>
+      {report.status !== 'pending' && <button className="outline" disabled={busy || note.trim().length < 5} onClick={() => decide('pending')}>Reopen as pending</button>}</div>
     {report.status === 'verified' && <p className="dashboardNote">Rejecting or reopening removes this report’s approved indicators. Indicators supported by other verified reports remain.</p>}
   </section>;
 }
@@ -102,14 +108,29 @@ function ReportQueue({ admin = false }) {
   const [data, setData] = useState(null), [busy, setBusy] = useState(true), [error, setError] = useState('');
   useEffect(() => {
     let active = true; setBusy(true); setError(''); setData(null);
-    api.reports.list({ admin, status, page }).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
-    return () => { active = false; };
+    let request = 0;
+    const load = () => {
+      const current = ++request;
+      api.reports.list({ admin, status, page }).then(value => { if (active && current === request) { setData(value); setError(''); } }).catch(error => { if (active && current === request) setError(error.message); }).finally(() => { if (active && current === request) setBusy(false); });
+    };
+    load();
+    const timer = !admin && setInterval(load, 30000);
+    window.addEventListener('focus', load);
+    window.addEventListener('report-read', load);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', load); window.removeEventListener('report-read', load); };
   }, [admin, status, page, refresh]);
+  async function read(report) {
+    try {
+      await api.reports.markRead(report._id, report.revision);
+      setData(value => value && ({ ...value, reports: value.reports.map(item => item._id === report._id && item.revision === report.revision ? { ...item, unread: false } : item) }));
+      reportRead();
+    } catch (error) { setError(error.message); }
+  }
   return <div aria-busy={busy}><div className="reportFilters"><label>Status <select value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}><option value="">All reports</option>{['pending', 'verified', 'rejected'].map(value => <option value={value} key={value}>{statusLabel(value)}{data ? ` (${data.counts[value]})` : ''}</option>)}</select></label>
     <button className="outline" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button></div>
     {busy && <p role="status">Loading reports…</p>}{error && <p role="alert" className="scanError">{error}</p>}
     {data && <>{!data.reports.length && <p className="dashboardEmpty">No {status || 'submitted'} reports to display.</p>}
-      {data.reports.map(report => <details className="panel reportCard" key={`${report._id}-${report.revision}`}><summary><Status value={report.status}/><b>{report.content.message?.slice(0, 80) || report.content.suspiciousUrl || report.content.senderEmail || report.content.phone || 'Scam report'}</b><span>{new Date(report.createdAt).toLocaleString()}</span></summary>
+      {data.reports.map(report => <details className={`panel reportCard${!admin && report.unread ? ' unread' : ''}`} key={`${report._id}-${report.revision}`} onToggle={event => { if (event.target === event.currentTarget && event.currentTarget.open && !admin && report.unread) read(report); }}><summary><Status value={report.status}/><b>{report.content.message?.slice(0, 80) || report.content.suspiciousUrl || report.content.senderEmail || report.content.phone || 'Scam report'}</b>{!admin && report.unread && <span className="reportUnreadLabel"><ReportNotificationDot/>Unread</span>}<span>{new Date(report.createdAt).toLocaleString()}</span></summary>
         <p className="dashboardNote">Reference: {report._id}{report.sourceScanId ? ` · Saved scan: ${report.sourceScanId}` : ''}</p><Content report={report}/><Assessment report={report}/>
         {report.reviewedAt && <p className="reportReviewNote"><b>Latest admin review · {new Date(report.reviewedAt).toLocaleString()}</b><br/>{report.reviewNote}</p>}
         {admin && report.reviewLog?.length > 0 && <details className="analysisDetails"><summary>Status history</summary>{report.reviewLog.map((entry, index) => <p key={index}><b>{statusLabel(entry.status)} · {new Date(entry.at).toLocaleString()}</b><br/>{entry.note}{entry.emailReviewed && <><br/>Selected sender emails reviewed for spoofing.</>}</p>)}</details>}
@@ -124,15 +145,24 @@ export function ReportManagement() {
 
 export function ThreatIndicators() {
   const [page, setPage] = useState(1), [refresh, setRefresh] = useState(0), [data, setData] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(true);
+  const [kind, setKind] = useState(''), [days, setDays] = useState(''), [search, setSearch] = useState(''), [draft, setDraft] = useState(''), [searchTouched, setSearchTouched] = useState(false);
+  function selectKind(value) { setKind(value); setPage(1); }
+  function resetFilters() { setKind(''); setDays(''); setSearch(''); setDraft(''); setPage(1); }
   useEffect(() => {
     let active = true; setBusy(true); setError(''); setData(null);
-    api.reports.threats(page).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
+    api.reports.threats(page, { kind, days, search }).then(value => { if (active) setData(value); }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
-  }, [page, refresh]);
+  }, [page, refresh, kind, days, search]);
   return <section className="content"><div className="eyebrow"><span/>VERIFIED INTELLIGENCE</div><h1>Threat Indicators</h1><p className="lead">Only individually approved indicators from verified reports appear here.</p>
-    <button className="outline" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
+    <form className="threatFilters" noValidate onSubmit={event => { event.preventDefault(); setSearchTouched(true); if (draft.length > 200) return; setSearch(draft.trim()); setPage(1); }}>
+      <label>Search indicators<input type="search" placeholder="Search URL, domain, email or phone" value={draft} onChange={event => setDraft(event.target.value)} onBlur={() => setSearchTouched(true)}/>{searchTouched && draft.length > 200 && <span className="fieldError" role="alert">Search must be 200 characters or fewer.</span>}</label>
+      <label>Indicator type<select value={kind} onChange={event => selectKind(event.target.value)}><option value="">All types</option>{['url', 'domain', 'email', 'phone'].map(value => <option key={value} value={value}>{kindLabel(value)}</option>)}</select></label>
+      <label>Last verified<select value={days} onChange={event => { setDays(event.target.value); setPage(1); }}><option value="">Any time</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></label>
+      <button className="primary" type="submit">Search</button><button className="outline" type="button" onClick={resetFilters}>Reset</button>
+      <button className="outline" type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh</button>
+    </form>
     {busy && <p role="status">Loading verified indicators…</p>}{error && <p role="alert" className="scanError">{error}</p>}
-    {data && <>{!data.indicators.length ? <p className="dashboardEmpty">No verified threat indicators yet.</p> : <div className="dashboardTableWrap"><table><thead><tr><th>Type</th><th>Indicator</th><th>Verified reports</th><th>Last verified</th></tr></thead><tbody>{data.indicators.map(item => <tr key={`${item.kind}:${item.value}`}><td>{kindLabel(item.kind)}</td><td className="threatValue">{item.value}</td><td>{item.reportIds.length}</td><td>{new Date(item.verifiedAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
+    {data && <><ThreatPie distribution={data.distribution || []} selected={kind} onSelect={selectKind}/><p className="dashboardNote" role="status">{data.total.toLocaleString()} matching indicators{search && ` for “${search}”`}{kind && ` · ${kindLabel(kind)}`}</p>{!data.indicators.length ? <p className="dashboardEmpty">{kind || days || search ? 'No verified indicators match your filters. Try resetting the filters.' : 'No verified threat indicators yet.'}</p> : <div className="dashboardTableWrap"><table><thead><tr><th>Type</th><th>Indicator</th><th>Verified reports</th><th>Last verified</th></tr></thead><tbody>{data.indicators.map(item => <tr key={`${item.kind}:${item.value}`}><td>{kindLabel(item.kind)}</td><td className="threatValue">{item.value}</td><td>{item.reportIds.length}</td><td>{new Date(item.verifiedAt).toLocaleString()}</td></tr>)}</tbody></table></div>}
       <Pagination page={page} total={data.total} onChange={setPage} busy={busy}/></>}
   </section>;
 }

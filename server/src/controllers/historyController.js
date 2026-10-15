@@ -5,7 +5,9 @@ export function historyController(scans) {
     if (!scans) return res.status(503).json({ message: 'Scan history unavailable.' });
     try {
       const rows = await scans.list(String(req.user._id), limit);
-      res.json({ scans: rows.map(row => ({ id: String(row._id), title: row.title, created_at: row.createdAt, result: row.result })) });
+      res.json({ scans: rows.map(row => ({ id: String(row._id), title: row.title, created_at: row.createdAt, result: row.result,
+        userId: row.userId ? String(row.userId) : String(req.user._id), guestId: row.guestId || null,
+        submittedBy: row.submittedBy || 'user', originallySubmittedAsGuest: Boolean(row.originallySubmittedAsGuest) })) });
     } catch { res.status(503).json({ message: 'Scan history unavailable.' }); }
   };
 }

@@ -67,8 +67,8 @@ async function listScans({ authenticated = false } = {}) {
   }));
 }
 
-async function dashboardStats(admin = false) {
-  const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats`, { credentials: 'include' });
+async function dashboardStats(admin = false, range, { signal } = {}) {
+  const response = await fetch(`${baseUrl}/api/scans/${admin ? 'admin/' : ''}stats${range ? `?range=${encodeURIComponent(range)}` : ''}`, { credentials: 'include', signal });
   if (response.status === 401) throw new Error('Your session has expired. Please log in again.');
   if (response.status === 403) throw new Error('You do not have access to this dashboard.');
   if (response.status === 429) throw new Error('Too many dashboard requests. Please wait a minute before trying again.');
@@ -95,10 +95,12 @@ async function reportRequest(path = '', { method = 'GET', body } = {}) {
 
 export const api = {
   reports: {
+    unread: () => reportRequest('/unread'),
+    markRead: (id, revision) => reportRequest(`/${encodeURIComponent(id)}/read`, { method: 'PATCH', body: { revision } }),
     submit: body => reportRequest('', { method: 'POST', body }),
     list: ({ admin = false, status = '', page = 1 } = {}) => reportRequest(`${admin ? '/admin' : ''}?status=${encodeURIComponent(status)}&page=${page}`),
     review: (id, body) => reportRequest(`/${encodeURIComponent(id)}/status`, { method: 'PATCH', body }),
-    threats: (page = 1) => reportRequest(`/threat-indicators?page=${page}`),
+    threats: (page = 1, { kind = '', search = '', days = '' } = {}) => reportRequest(`/threat-indicators?${new URLSearchParams({ page, ...(kind ? { kind } : {}), ...(search ? { search } : {}), ...(days ? { days } : {}) })}`),
   },
   auth: authApi,
   dashboard: { stats: dashboardStats },

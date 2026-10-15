@@ -1,3 +1,4 @@
+import { ownershipFields, createOwned } from '../services/ownershipService.js';
 import { Router } from 'express';
 import { createHash } from 'node:crypto';
 import { requireAuth, requireRole } from '../middleware/auth.js';
@@ -7,7 +8,7 @@ import { orchestrateScan } from '../services/scanOrchestrator.js';
 import { analyzerClient } from '../services/analyzerClient.js';
 import { validateReportInput, analysisText, prepareStoredReport, reviewDecision, reportError } from '../services/reportService.js';
 
-export function reportRoutes({ users, scans, reports, consents, origins = [], mlUrl, analyze = input => orchestrateScan(input, analyzerClient(mlUrl)) }) {
+export function reportRoutes({ users, scans, reports, consents, ownership, origins = [], mlUrl, analyze = input => orchestrateScan(input, analyzerClient(mlUrl)) }) {
   const router = Router();
   let active = 0;
   router.use((req, res, next) => {
@@ -31,9 +32,26 @@ export function reportRoutes({ users, scans, reports, consents, origins = [], ml
     } catch (error) { next(error); }
   };
   router.get('/', requireAuth(users), list(false));
+  router.get('/unread', requireAuth(users), async (req, res, next) => {
+    try { res.json({ count: await reports.unreadCount(String(req.user._id)) }); } catch (error) { next(error); }
+  });
+  router.patch('/:id/read', requireAuth(users), async (req, res, next) => {
+    try {
+      if (!/^[a-f\d]{24}$/i.test(req.params.id) || !Number.isInteger(req.body.revision) || req.body.revision < 0)
+        throw reportError(400, 'A valid report reference and revision are required.');
+      const report = await reports.markRead(req.params.id, String(req.user._id), req.body.revision);
+      if (!report) throw reportError(409, 'Report changed or is unavailable. Refresh your reports and try again.');
+      res.json({ report });
+    } catch (error) { next(error); }
+  });
   router.get('/admin', requireAuth(users), requireRole('admin'), list(true));
   router.get('/threat-indicators', requireAuth(users), requireRole('admin'), async (req, res, next) => {
-    try { res.json(await reports.threats(page(req))); } catch (error) { next(error); }
+    try {
+      const { kind = '', search = '', days = '' } = req.query;
+      if (!['', 'url', 'domain', 'email', 'phone'].includes(kind) || !['', '7', '30', '90'].includes(days) || typeof search !== 'string' || search.length > 200)
+        throw reportError(400, 'Invalid indicator filters.');
+      res.json(await reports.threats(page(req), { kind, search: search.trim(), days: Number(days) }));
+    } catch (error) { next(error); }
   });
   router.post('/', apiRateLimit({ limit: 5, message: 'Too many report submissions. Please try again in a minute.' }),
     (req, res, next) => req.session?.userId ? requireAuth(users)(req, res, next) : next(), async (req, res, next) => {
@@ -54,12 +72,13 @@ export function reportRoutes({ users, scans, reports, consents, origins = [], ml
         if (req.body.termsVersion !== SCAN_TERMS.version) throw reportError(409, 'The consent terms have changed. Refresh and review them.');
         if (!consents) throw reportError(503, 'Consent storage is unavailable. No report was analyzed.');
         const consent = await consents.create({ userId: req.user ? String(req.user._id) : null,
+          guestId: req.user ? null : req.guestId,
           source: req.user ? 'account' : 'guest', accepted: true, acceptedAt: new Date(), termsVersion: SCAN_TERMS.version,
           termsEffectiveDate: SCAN_TERMS.effectiveDate, termsText: SCAN_TERMS.text,
           termsSha256: createHash('sha256').update(SCAN_TERMS.text).digest('hex') });
         const { report, prepared, artifacts } = await analyze({ text, type: 'auto' });
         const stored = prepareStoredReport(fields, prepared, artifacts, report);
-        const saved = await reports.create({ ...stored, userId: req.user ? String(req.user._id) : null,
+        const saved = await createOwned(ownership, reports, { ...stored, ...ownershipFields(req.user, req.guestId),
           sourceScanId, consentId: consent._id, status: 'pending', revision: 0, approvedIndicatorIds: [],
           expiresAt: new Date(Date.now() + 30 * 86400000) });
         res.status(201).json({ report: saved });

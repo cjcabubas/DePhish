@@ -1,3 +1,4 @@
+import { guestIdentity } from './middleware/guestIdentity.js';
 import express from 'express';
 import cors from 'cors';
 import { scanRoutes } from './routes/scanRoutes.js';
@@ -12,7 +13,7 @@ import { reportRoutes } from './routes/reportRoutes.js';
 import { learnRoutes } from './routes/learnRoutes.js';
 import { createEmailService } from './services/emailService.js';
 import { createEmailOtpService } from './services/emailOtpService.js';
-export function createApp({ config, users, store, scans, identifiers, consents, reports, progress, emailOtps, resetGrants, otpService, reportAnalyze, isReady = () => true, authLimit = 15, apiLimit = 120 }) {
+export function createApp({ config, users, store, scans, identifiers, consents, reports, progress, ownership, emailOtps, resetGrants, otpService, reportAnalyze, isReady = () => true, authLimit = 15, apiLimit = 120 }) {
   const app = express();
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -43,12 +44,13 @@ export function createApp({ config, users, store, scans, identifiers, consents, 
     // 'none' requires secure:true which is enforced in production.
     const cookie = { httpOnly: true, secure: config.production, sameSite: config.production ? 'none' : 'lax', path: '/api', maxAge: 7 * 24 * 60 * 60 * 1000 };
     app.use(['/api/auth', '/api/scans', '/api/reports', '/api/learn'], session({ name: 'dephish.sid', secret: config.sessionSecret, store, resave: false, saveUninitialized: false, cookie }));
+    app.use(['/api/auth', '/api/scans', '/api/reports'], guestIdentity(config));
     const email = createEmailService(config.smtp || {});
     const otp = otpService || createEmailOtpService({ users, otps: emailOtps, grants: resetGrants, email, secret: config.sessionSecret });
-    app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie, otp, users), users, authLimit));
+    app.use('/api/auth', authRoutes(createAuthController(createAuthService(users), cookie, otp, users, ownership), users, authLimit));
   }
-  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, identifiers, consents, pseudonymizationKey: config.sessionSecret, origins: config.origins }));
-  app.use('/api/reports', reportRoutes({ users, scans, reports, consents, origins: config.origins,
+  app.use('/api/scans', scanRoutes(config.mlApiUrl || 'http://127.0.0.1:8000', { users, scans, identifiers, consents, ownership, pseudonymizationKey: config.sessionSecret, origins: config.origins }));
+  app.use('/api/reports', reportRoutes({ users, scans, reports, consents, ownership, origins: config.origins,
     mlUrl: config.mlApiUrl || 'http://127.0.0.1:8000', analyze: reportAnalyze }));
   app.use('/api/learn', learnRoutes({ users, progress }));
   app.use((req, res) => res.status(404).json({ message: 'Endpoint not found.' }));

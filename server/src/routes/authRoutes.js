@@ -4,9 +4,9 @@ import { validateAuth, validateEmail, validateCode, validateMfaConfirmation, val
 import { requireAuth } from '../middleware/auth.js';
 export function authRoutes(controller, users, limit = 15) {
   const router = Router();
-  const account = rateLimit({ windowMs: 15 * 60_000, limit, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many account attempts. Please try again in 15 minutes.' } });
-  const issue = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many code requests. Please try again later.' } });
-  const verify = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many code attempts. Request another code later.' } });
+  const account = rateLimit({ windowMs: 15 * 60_000, limit, skipSuccessfulRequests: true, requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode >= 500, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many account attempts. Please try again in 15 minutes.' } });
+  const issue = rateLimit({ windowMs: 60 * 60_000, limit: 30, skipFailedRequests: true, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many code requests. Please try again later.' } });
+  const verify = rateLimit({ windowMs: 15 * 60_000, limit: 30, skipSuccessfulRequests: true, requestWasSuccessful: (req, res) => res.statusCode < 400 || res.statusCode >= 500, standardHeaders: 'draft-8', legacyHeaders: false, message: { message: 'Too many code attempts. Request another code later.' } });
   router.post('/signup', issue, validateAuth('registration-request'), controller.registrationRequest);
   router.post('/signup/resend', issue, validateAuth('registration-request'), controller.registrationResend);
   router.post('/signup/verify', verify, validateAuth('registration-verify'), controller.registrationVerify);

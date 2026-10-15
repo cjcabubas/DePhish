@@ -19,13 +19,30 @@ function Breakdown({ stats }) {
   </section>;
 }
 
-function Activity({ stats }) {
-  const total = stats.activity.reduce((sum, day) => sum + day.total, 0);
-  const max = Math.max(1, ...stats.activity.map(day => day.total));
-  return <section className="panel dashboardActivity"><div className="panelHead"><h2>Daily scan activity</h2><span>Last 30 days · UTC</span></div>
-    <p><b>{number(total)}</b> scans saved during this period</p>
-    {total > 0 ? <><div className="activityBars" role="img" aria-label={`${total} scans saved over the last 30 days. Daily counts are in the expandable table below.`}>{stats.activity.map(day => <div key={day.date} title={`${day.date}: ${day.total} scans`}><i style={{ height: `${day.total / max * 100}%` }}/></div>)}</div><div className="activityDates"><span>{stats.activity[0].date}</span><span>{stats.activity.at(-1).date}</span></div>
-      <details className="analysisDetails"><summary>Daily counts</summary><div className="dashboardTableWrap"><table><thead><tr><th>Date (UTC)</th><th>Total</th><th>Phishing</th><th>Suspicious</th><th>Low risk</th></tr></thead><tbody>{stats.activity.map(day => <tr key={day.date}><td>{day.date}</td><td>{day.total}</td><td>{day.phishing}</td><td>{day.suspicious}</td><td>{day.legitimate}</td></tr>)}</tbody></table></div></details></> : <p className="dashboardEmpty">No scans saved in the last 30 days.</p>}
+function Activity({ stats, admin }) {
+  const [range, setRange] = useState(null), [activity, setActivity] = useState(stats.activity);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (range === null) { setActivity(stats.activity); return; }
+    const controller = new AbortController();
+    let active = true;
+    setBusy(true); setError(''); setActivity([]);
+    api.dashboard.stats(admin, range, { signal: controller.signal })
+      .then(data => { if (active) setActivity(data.activity); })
+      .catch(error => { if (active) setError(error.message); })
+      .finally(() => { if (active) setBusy(false); });
+    return () => { active = false; controller.abort(); };
+  }, [admin, range, retry, stats]);
+  const selectedRange = range || '30';
+  const period = selectedRange === 'all' ? 'all time' : `the last ${selectedRange} days`;
+  const total = activity.reduce((sum, day) => sum + day.total, 0);
+  const max = activity.reduce((highest, day) => Math.max(highest, day.total), 1);
+  return <section className="panel dashboardActivity" aria-busy={busy}><div className="panelHead"><h2>Daily scan activity</h2><label className="activityRange"><select aria-label="Daily scan activity date range" value={selectedRange} onChange={event => setRange(event.target.value)}><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all">All time</option></select><span>UTC</span></label></div>
+    {busy ? <p className="dashboardEmpty" role="status">Loading scan activity…</p> : error ? <div className="dashboardError" role="alert"><p>{error}</p><button className="outline" onClick={() => setRetry(value => value + 1)}>Retry activity</button></div> : <>
+    <p aria-live="polite"><b>{number(total)}</b> scans saved during this period</p>
+    {total > 0 ? <><div className="activityScroll"><div className="activityBars" style={{ minWidth: activity.length > 90 ? `${activity.length * 4}px` : undefined }} role="img" aria-label={`${total} scans saved over ${period}, UTC. Daily counts are in the expandable table below.`}>{activity.map(day => <div key={day.date} title={`${day.date} UTC: ${day.total} scans`}><i style={{ height: `${day.total / max * 100}%` }}/></div>)}</div></div><div className="activityDates"><span>{activity[0].date}</span><span>{activity.at(-1).date}</span></div>
+      <details className="analysisDetails"><summary>Daily counts</summary><div className="dashboardTableWrap"><table><thead><tr><th>Date (UTC)</th><th>Total</th><th>Phishing</th><th>Suspicious</th><th>Low risk</th></tr></thead><tbody>{activity.map(day => <tr key={day.date}><td>{day.date}</td><td>{day.total}</td><td>{day.phishing}</td><td>{day.suspicious}</td><td>{day.legitimate}</td></tr>)}</tbody></table></div></details></> : <p className="dashboardEmpty">{selectedRange === 'all' ? 'No saved scans yet.' : `No scans saved in ${period}.`}</p>}
+    </>}
   </section>;
 }
 
@@ -56,7 +73,7 @@ export function Dashboard({ admin = false, go }) {
     {stats && <>
       <p className="dashboardNote">Totals cover all {admin ? 'account and guest' : 'your account'} saved scans. Unsaved scans are excluded. Updated {new Date(stats.generated_at).toLocaleString()}.</p>
       <div className="metricGrid"><Metric icon={History} color="blue" value={stats.total} label="Saved scans"/><Metric icon={AlertTriangle} color="red" value={stats.phishing} label="Phishing assessments"/><Metric icon={AlertTriangle} color="amber" value={stats.suspicious} label="Suspicious assessments"/><Metric icon={admin ? Users : CheckCircle2} color="teal" value={admin ? stats.active_accounts : stats.legitimate} label={admin ? 'Accounts with saved scans' : 'Low-risk assessments'}/></div>
-      <div className="dashboardGrid"><Activity stats={stats}/><Breakdown stats={stats}/></div><div className="dashboardIndicatorPanel"><Indicators stats={stats}/></div>
+      <div className="dashboardGrid"><Activity stats={stats} admin={admin}/><Breakdown stats={stats}/></div><div className="dashboardIndicatorPanel"><Indicators stats={stats}/></div>
       {admin ? <section className="panel dashboardReportNote"><h2>Community reports</h2><p>Review submitted scam reports and approve threat indicators separately from scan activity.</p><button className="primary" onClick={() => go('admin-reports')}>Review Scan Reports</button></section> : <section className="panel historyPanel"><div className="panelHead"><h2>Recent saved scans</h2><span>Latest {data.scans.length} · up to 50</span></div>
         {!data.scans.length && <div className="dashboardEmpty"><p>Your first saved scan will appear here.</p><button className="primary" onClick={() => go('scanner')}>Scan a message</button></div>}
         {data.scans.map(scan => <div className="historyRow" key={scan.id}><span className="typeIcon"><ScanSearch/></span><div><b>{scan.title}</b><p>{scan.type} · {scan.date} · Score {scan.score}/100</p></div><span className={`status ${scan.result?.prediction === 'Legitimate' ? 'low-risk' : 'suspicious'}`}>{scan.result?.prediction === 'Legitimate' ? 'Low risk' : scan.result?.prediction || scan.status}</span><button className="outline" onClick={() => setSelected(scan)}>View result</button></div>)}

@@ -7,6 +7,9 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   }, { _id: false });
   const schema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    guestId: { type: String, default: null },
+    submittedBy: { type: String, enum: ['user', 'guest'], default: function () { return this.userId ? 'user' : 'guest'; } },
+    originallySubmittedAsGuest: { type: Boolean, default: false },
     sourceScanId: { type: mongoose.Schema.Types.ObjectId, default: null },
     consentId: { type: mongoose.Schema.Types.ObjectId, required: true },
     content: { message: String, suspiciousUrl: String, senderEmail: String, phone: String, details: String },
@@ -14,6 +17,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
     candidates: [candidateSchema],
     status: { type: String, enum: ['pending', 'verified', 'rejected'], default: 'pending', required: true },
     revision: { type: Number, default: 0 },
+    unread: { type: Boolean, default: false },
     approvedIndicatorIds: [String], reviewNote: String,
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null }, reviewedAt: Date,
     reviewLog: [{ _id: false, status: String, note: String, emailReviewed: Boolean,
@@ -22,6 +26,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   }, { timestamps: true, bufferCommands: false });
   schema.index({ status: 1, createdAt: -1 });
   schema.index({ userId: 1, createdAt: -1 });
+  schema.index({ guestId: 1, userId: 1 });
   schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
   const threatSchema = new mongoose.Schema({
     reportId: { type: mongoose.Schema.Types.ObjectId, required: true },
@@ -36,8 +41,13 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
   const live = () => ({ expiresAt: { $gt: new Date() } });
   return {
     init: async () => { await Report.init(); await Threat.init(); },
-    create: fields => Report.create(fields),
+    create: async (fields, session) => session ? (await Report.create([fields], { session }))[0] : Report.create(fields),
+    claimGuest: (guestId, userId, session) => Report.updateMany({ guestId, userId: null },
+      { $set: { userId, submittedBy: 'user', originallySubmittedAsGuest: true } }, { session }),
     find: id => Report.findOne({ _id: id, ...live() }).lean(),
+    unreadCount: userId => Report.countDocuments({ userId, unread: true, ...live() }),
+    markRead: (id, userId, revision) => Report.findOneAndUpdate(
+      { _id: id, userId, revision, ...live() }, { $set: { unread: false } }, { new: true }).lean(),
     async list({ userId, status, page = 1 }) {
       const scope = { ...live(), ...(userId ? { userId } : {}) };
       const filter = { ...scope, ...(status ? { status } : {}) };
@@ -53,7 +63,7 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
       // No nontransactional fallback: a failed transaction leaves the previous decision intact.
       return mongoose.connection.transaction(async session => {
         const report = await Report.findOneAndUpdate({ _id: id, revision, ...live() }, {
-          $set: { status: decision.status, approvedIndicatorIds: decision.indicators.map(item => item.id),
+          $set: { status: decision.status, unread: decision.status !== 'pending', approvedIndicatorIds: decision.indicators.map(item => item.id),
             reviewNote: decision.note, reviewedBy: reviewer, reviewedAt: new Date() }, $inc: { revision: 1 },
           $push: { reviewLog: { $each: [{ status: decision.status, note: decision.note, emailReviewed: decision.emailReviewed,
             indicatorIds: decision.indicators.map(item => item.id), reviewer, at: new Date() }], $slice: -50 } },
@@ -67,19 +77,23 @@ export function createReportRepository(collectionName = 'reports', indicatorColl
         return report;
       });
     },
-    async threats(page = 1) {
+    async threats(page = 1, { kind = '', search = '', days = 0 } = {}) {
+      const typeFilter = kind ? [{ $match: { '_id.kind': kind } }] : [];
       const pipeline = [
         { $match: live() },
         { $lookup: { from: collectionName, localField: 'reportId', foreignField: '_id', as: 'report' } },
         { $unwind: '$report' },
         { $match: { 'report.status': 'verified', 'report.expiresAt': { $gt: new Date() } } },
         { $group: { _id: { kind: '$kind', value: '$value' }, reportIds: { $addToSet: '$reportId' }, verifiedAt: { $max: '$updatedAt' } } },
+        ...(search ? [{ $match: { '_id.value': { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } }] : []),
+        ...(days ? [{ $match: { verifiedAt: { $gte: new Date(Date.now() - days * 86400000) } } }] : []),
         { $sort: { verifiedAt: -1, '_id.kind': 1, '_id.value': 1 } },
-        { $facet: { items: [{ $skip: (page - 1) * 20 }, { $limit: 20 }], count: [{ $count: 'total' }] } },
+        { $facet: { items: [...typeFilter, { $skip: (page - 1) * 20 }, { $limit: 20 }], count: [...typeFilter, { $count: 'total' }],
+          distribution: [{ $group: { _id: '$_id.kind', count: { $sum: 1 } } }, { $sort: { _id: 1 } }] } },
       ];
       const [result] = await Threat.aggregate(pipeline).option({ maxTimeMS: 10000 });
       return { indicators: result.items.map(item => ({ ...item._id, reportIds: item.reportIds, verifiedAt: item.verifiedAt })),
-        total: result.count[0]?.total || 0, page };
+        total: result.count[0]?.total || 0, page, distribution: result.distribution.map(item => ({ kind: item._id, count: item.count })) };
     },
   };
 }

@@ -6,7 +6,7 @@ test('dashboard requests use private endpoints and never replace errors with dem
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async (url, options) => {
-      assert.equal(options.credentials, 'same-origin');
+      assert.equal(options.credentials, 'include');
       assert.ok(['/api/scans/stats', '/api/scans/admin/stats'].includes(url));
       return { ok: true, json: async () => ({ total: 0, scope: url.includes('admin') ? 'all_accounts' : 'account' }) };
     };
@@ -19,5 +19,23 @@ test('dashboard requests use private endpoints and never replace errors with dem
     assert.equal(typeof api.reports.list, 'function');
     globalThis.fetch = async () => ({ status: 401, ok: false });
     await assert.rejects(api.scans.list({ authenticated: true }), /session has expired/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('activity range requests preserve account scope and support cancellation for all four options', async () => {
+  const original = globalThis.fetch;
+  const controller = new AbortController();
+  try {
+    for (const admin of [true, false]) {
+      for (const range of ['7', '30', '90', 'all']) {
+        globalThis.fetch = async (url, options) => {
+          assert.equal(url, `/api/scans/${admin ? 'admin/' : ''}stats?range=${range}`);
+          assert.equal(options.credentials, 'include');
+          assert.equal(options.signal, controller.signal);
+          return { ok: true, json: async () => ({ activity: [], period: { range } }) };
+        };
+        assert.equal((await api.dashboard.stats(admin, range, { signal: controller.signal })).period.range, range);
+      }
+    }
   } finally { globalThis.fetch = original; }
 });
