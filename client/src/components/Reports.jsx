@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Flag, ShieldCheck } from 'lucide-react';
 import { api } from '../services/api';
 import { TermsBox } from './TermsBox';
+import { validateReport, validateReportField } from '../utils/validation';
 
 const statusLabel = status => ({ pending: 'Pending', verified: 'Verified', rejected: 'Rejected' }[status] || status);
 const kindLabel = kind => ({ url: 'URL', domain: 'Domain', email: 'Sender email', phone: 'Phone number' }[kind] || kind);
@@ -34,15 +35,21 @@ export function Report({ source: initialSource, authenticated }) {
   const [source, setSource] = useState(initialSource);
   const [form, setForm] = useState({ message: source?.message || '', suspiciousUrl: '', senderEmail: '', phone: '', details: '' });
   const [consent, setConsent] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [saved, setSaved] = useState(null);
+  const [validation, setValidation] = useState({ fields: {}, formError: '' }), [touched, setTouched] = useState({});
   const [tab, setTab] = useState('new');
+  function updateField(key, value) { setForm(previous => ({ ...previous, [key]: value })); if (touched[key]) setValidation(validateReport({ ...form, [key]: value }, { hasSourceScan: Boolean(source?.sourceScanId) })); }
+  function blurField(key) { setTouched(previous => ({ ...previous, [key]: true })); setValidation(previous => ({ ...previous, fields: { ...previous.fields, [key]: validateReportField(key, form[key]) } })); }
   async function submit(event) {
     event.preventDefault();
     if (busy) return;
+    const checked = validateReport(form, { hasSourceScan: Boolean(source?.sourceScanId) });
+    setValidation(checked); setTouched(Object.fromEntries(Object.keys(form).map(key => [key, true])));
+    if (Object.keys(checked.fields).length || checked.formError) return;
     setBusy(true); setError('');
     try {
       const result = await api.reports.submit({ ...form, ...(source?.sourceScanId ? { sourceScanId: source.sourceScanId } : {}),
         tosAccepted: Boolean(consent), termsVersion: consent });
-      setSaved(result.report); setForm({ message: '', suspiciousUrl: '', senderEmail: '', phone: '', details: '' }); setConsent(false);
+      setSaved(result.report); setForm({ message: '', suspiciousUrl: '', senderEmail: '', phone: '', details: '' }); setConsent(false); setTouched({}); setValidation({ fields: {}, formError: '' });
     } catch (error) { setError(error.message); } finally { setBusy(false); }
   }
   return <section className="content narrow"><div className="eyebrow"><span/>COMMUNITY PROTECTION</div><h1>Report Scam</h1>
@@ -51,13 +58,15 @@ export function Report({ source: initialSource, authenticated }) {
     {tab === 'mine' ? <ReportQueue/> : saved ? <section className="panel reportReceipt" role="status"><ShieldCheck/><h2>Report submitted</h2><p>Your report is pending admin review. No threat indicators have been published.</p><p>Reference: {saved._id}</p><Assessment report={saved}/>
       {!authenticated && <p>Guest reports can be reviewed by admins. Sign in before future submissions to track their status in My reports.</p>}
       <button className="outline" onClick={() => { setSaved(null); setSource(null); }}>Submit another report</button></section>
-      : <form className="reportForm" onSubmit={submit} aria-busy={busy}>
+      : <form className="reportForm" noValidate onSubmit={submit} aria-busy={busy}>
         {source?.sourceScanId && <p className="reportSource">Reporting saved scan {source.sourceScanId}. Its saved, redacted message will be analyzed again. Add any missing sender or link details below.</p>}
         <p>Remove passwords, codes, and personal information that is not needed. Link analysis may contact submitted websites. Reports and review candidates are retained for up to 30 days; designated scam contacts are visible to admins for review.</p>
         {fields.map(([key, label, placeholder]) => key === 'message' && source?.sourceScanId ? null : <label key={key}>{label}
-          {['message', 'details'].includes(key) ? <textarea value={form[key]} disabled={busy} maxLength={key === 'message' ? 5000 : 2000} placeholder={placeholder} onChange={event => setForm({ ...form, [key]: event.target.value })}/>
-            : <input type={key === 'senderEmail' ? 'email' : key === 'phone' ? 'tel' : 'text'} value={form[key]} disabled={busy} maxLength={key === 'senderEmail' ? 254 : key === 'phone' ? 40 : 2048} placeholder={placeholder} onChange={event => setForm({ ...form, [key]: event.target.value })}/>}</label>)}
+          {['message', 'details'].includes(key) ? <textarea value={form[key]} disabled={busy} placeholder={placeholder} onChange={event => updateField(key, event.target.value)} onBlur={() => blurField(key)}/>
+            : <input type={key === 'senderEmail' ? 'email' : key === 'phone' ? 'tel' : 'text'} value={form[key]} disabled={busy} placeholder={placeholder} onChange={event => updateField(key, event.target.value)} onBlur={() => blurField(key)}/>}
+          {touched[key] && validation.fields[key] && <span className="fieldError" role="alert">{validation.fields[key]}</span>}</label>)}
         <p className="dashboardNote">Provide at least one message, link, email, or phone. Combined content must be within 5,000 characters. Sender addresses can be spoofed; naming one does not establish fraud.</p>
+        {validation.formError && <p className="fieldError" role="alert">{validation.formError}</p>}
         <TermsBox checked={consent} onChange={setConsent} disabled={busy}/>
         {error && <p className="scanError" role="alert">{error}</p>}
         <button className="primary submit" disabled={busy || !consent}><Flag size={17}/>{busy ? 'Analyzing and submitting…' : 'Submit report'}</button>
@@ -67,9 +76,10 @@ export function Report({ source: initialSource, authenticated }) {
 
 function Review({ report, onSaved }) {
   const [selected, setSelected] = useState(report.approvedIndicatorIds || []), [emailReviewed, setEmailReviewed] = useState(false);
-  const [note, setNote] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [note, setNote] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState(''), [noteTouched, setNoteTouched] = useState(false), [noteError, setNoteError] = useState('');
   const hasEmail = report.candidates.some(item => item.kind === 'email' && selected.includes(item.id));
   async function decide(status) {
+    const validation = validateReportField('note', note); setNoteTouched(true); setNoteError(validation); if (validation) return;
     setBusy(true); setError('');
     try { await api.reports.review(report._id, { status, revision: report.revision, indicatorIds: status === 'verified' ? selected : [], note, emailReviewed }); onSaved(); }
     catch (error) { setError(error.message); } finally { setBusy(false); }
@@ -78,11 +88,11 @@ function Review({ report, onSaved }) {
     <div className="reportCandidates">{report.candidates.length ? report.candidates.map(item => <label key={item.id}><input type="checkbox" disabled={busy} checked={selected.includes(item.id)} onChange={event => setSelected(event.target.checked ? [...selected, item.id] : selected.filter(id => id !== item.id))}/>
       <span><b>{kindLabel(item.kind)}: {item.value}</b><small>{item.source}</small></span></label>) : <p>No valid threat candidates were found. Credentials are never eligible.</p>}</div>
     {hasEmail && <label className="reportEmailReview"><input type="checkbox" checked={emailReviewed} disabled={busy} onChange={event => setEmailReviewed(event.target.checked)}/><span>I reviewed the selected sender addresses for spoofing and documented evidence connecting them to this scam below.</span></label>}
-    <label className="reportNote">Review note<textarea value={note} maxLength={1000} disabled={busy} onChange={event => setNote(event.target.value)} placeholder={hasEmail ? 'Explain the evidence for the sender addresses and your decision.' : 'Explain your decision or why the report needs another review.'}/></label>
+    <label className="reportNote">Review note<textarea value={note} disabled={busy} onChange={event => { const value = event.target.value; setNote(value); if (noteTouched) setNoteError(validateReportField('note', value)); }} onBlur={() => { setNoteTouched(true); setNoteError(validateReportField('note', note)); }} placeholder={hasEmail ? 'Explain the evidence for the sender addresses and your decision.' : 'Explain your decision or why the report needs another review.'}/>{noteTouched && noteError && <span className="fieldError" role="alert">{noteError}</span>}</label>
     {error && <p className="scanError" role="alert">{error}</p>}
-    <div className="reportDecisions"><button className="primary" disabled={busy || note.trim().length < 5 || (hasEmail && !emailReviewed)} onClick={() => decide('verified')}>{busy ? 'Saving…' : 'Verify'}</button>
-      <button className="outline" disabled={busy || note.trim().length < 5} onClick={() => decide('rejected')}>Reject</button>
-      {report.status !== 'pending' && <button className="outline" disabled={busy || note.trim().length < 5} onClick={() => decide('pending')}>Reopen as pending</button>}</div>
+    <div className="reportDecisions"><button className="primary" disabled={busy || (hasEmail && !emailReviewed)} onClick={() => decide('verified')}>{busy ? 'Saving…' : 'Verify'}</button>
+      <button className="outline" disabled={busy} onClick={() => decide('rejected')}>Reject</button>
+      {report.status !== 'pending' && <button className="outline" disabled={busy} onClick={() => decide('pending')}>Reopen as pending</button>}</div>
     {report.status === 'verified' && <p className="dashboardNote">Rejecting or reopening removes this report’s approved indicators. Indicators supported by other verified reports remain.</p>}
   </section>;
 }
