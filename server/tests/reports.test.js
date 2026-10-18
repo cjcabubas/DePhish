@@ -530,6 +530,37 @@ test("validation excludes malformed contacts, excessive input and arbitrary revi
   );
 });
 
+test("report fields accept exact schema limits and reject one character over", () => {
+  assert.equal(
+    validateReportInput({ message: "x".repeat(5000) }).message.length,
+    5000,
+  );
+  assert.equal(
+    validateReportInput({
+      suspiciousUrl: `https://example.com/${"a".repeat(2028)}`,
+    }).suspiciousUrl.length,
+    2048,
+  );
+  assert.throws(() => validateReportInput({ suspiciousUrl: "x".repeat(2049) }));
+  assert.throws(() =>
+    validateReportInput({ senderEmail: "x".repeat(250) + "@b.com" }),
+  );
+  assert.throws(() =>
+    validateReportInput({ details: "x".repeat(2001), message: "report" }),
+  );
+  assert.throws(() =>
+    reviewDecision(
+      { candidates: [] },
+      {
+        status: "rejected",
+        revision: 0,
+        note: "x".repeat(1001),
+        indicatorIds: [],
+      },
+    ),
+  );
+});
+
 test("credentials and recipient addresses cannot become threat candidates; secret phone normalization cannot bypass redaction", () => {
   const fields = validateReportInput({
     message:

@@ -4,6 +4,7 @@ import { api } from "../services/api";
 import { TermsBox } from "./TermsBox";
 import { reportRead } from "../services/reportNotifications";
 import { ThreatPie } from "./ThreatPie";
+import { validateReport, validateReportField } from "../utils/validation";
 
 export function ReportNotificationDot() {
   return (
@@ -149,10 +150,36 @@ export function Report({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [saved, setSaved] = useState(null);
+  const [validation, setValidation] = useState({ fields: {}, formError: "" }),
+    [touched, setTouched] = useState({});
   const [tab, setTab] = useState("new");
+  function updateField(key, value) {
+    const next = { ...form, [key]: value };
+    setForm(next);
+    if (touched[key])
+      setValidation(
+        validateReport(next, { hasSourceScan: Boolean(source?.sourceScanId) }),
+      );
+  }
+  function blurField(key) {
+    setTouched((previous) => ({ ...previous, [key]: true }));
+    setValidation((previous) => ({
+      ...previous,
+      fields: {
+        ...previous.fields,
+        [key]: validateReportField(key, form[key]),
+      },
+    }));
+  }
   async function submit(event) {
     event.preventDefault();
     if (busy) return;
+    const checked = validateReport(form, {
+      hasSourceScan: Boolean(source?.sourceScanId),
+    });
+    setValidation(checked);
+    setTouched(Object.fromEntries(Object.keys(form).map((key) => [key, true])));
+    if (Object.keys(checked.fields).length || checked.formError) return;
     setBusy(true);
     setError("");
     try {
@@ -171,6 +198,8 @@ export function Report({
         details: "",
       });
       setConsent(false);
+      setTouched({});
+      setValidation({ fields: {}, formError: "" });
     } catch (error) {
       setError(error.message);
     } finally {
@@ -233,7 +262,12 @@ export function Report({
           </button>
         </section>
       ) : (
-        <form className="reportForm" onSubmit={submit} aria-busy={busy}>
+        <form
+          className="reportForm"
+          noValidate
+          onSubmit={submit}
+          aria-busy={busy}
+        >
           {source?.sourceScanId && (
             <p className="reportSource">
               Reporting saved scan {source.sourceScanId}. Its saved, redacted
@@ -255,11 +289,9 @@ export function Report({
                   <textarea
                     value={form[key]}
                     disabled={busy}
-                    maxLength={key === "message" ? 5000 : 2000}
                     placeholder={placeholder}
-                    onChange={(event) =>
-                      setForm({ ...form, [key]: event.target.value })
-                    }
+                    onChange={(event) => updateField(key, event.target.value)}
+                    onBlur={() => blurField(key)}
                   />
                 ) : (
                   <input
@@ -272,14 +304,15 @@ export function Report({
                     }
                     value={form[key]}
                     disabled={busy}
-                    maxLength={
-                      key === "senderEmail" ? 254 : key === "phone" ? 40 : 2048
-                    }
                     placeholder={placeholder}
-                    onChange={(event) =>
-                      setForm({ ...form, [key]: event.target.value })
-                    }
+                    onChange={(event) => updateField(key, event.target.value)}
+                    onBlur={() => blurField(key)}
                   />
+                )}{" "}
+                {touched[key] && validation.fields[key] && (
+                  <span className="fieldError" role="alert">
+                    {validation.fields[key]}
+                  </span>
                 )}
               </label>
             ),
@@ -289,6 +322,11 @@ export function Report({
             content must be within 5,000 characters. Sender addresses can be
             spoofed; naming one does not establish fraud.
           </p>
+          {validation.formError && (
+            <p className="fieldError" role="alert">
+              {validation.formError}
+            </p>
+          )}
           <TermsBox checked={consent} onChange={setConsent} disabled={busy} />
           {error && (
             <p className="scanError" role="alert">
@@ -311,10 +349,16 @@ function Review({ report, onSaved }) {
   const [note, setNote] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [noteTouched, setNoteTouched] = useState(false),
+    [noteError, setNoteError] = useState("");
   const hasEmail = report.candidates.some(
     (item) => item.kind === "email" && selected.includes(item.id),
   );
   async function decide(status) {
+    const validation = validateReportField("note", note);
+    setNoteTouched(true);
+    setNoteError(validation);
+    if (validation) return;
     setBusy(true);
     setError("");
     try {
@@ -390,15 +434,27 @@ function Review({ report, onSaved }) {
         Review note
         <textarea
           value={note}
-          maxLength={1000}
           disabled={busy}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value;
+            setNote(value);
+            if (noteTouched) setNoteError(validateReportField("note", value));
+          }}
+          onBlur={() => {
+            setNoteTouched(true);
+            setNoteError(validateReportField("note", note));
+          }}
           placeholder={
             hasEmail
               ? "Explain the evidence for the sender addresses and your decision."
               : "Explain your decision or why the report needs another review."
           }
         />
+        {noteTouched && noteError && (
+          <span className="fieldError" role="alert">
+            {noteError}
+          </span>
+        )}
       </label>
       {error && (
         <p className="scanError" role="alert">
@@ -660,7 +716,8 @@ export function ThreatIndicators() {
   const [kind, setKind] = useState(""),
     [days, setDays] = useState(""),
     [search, setSearch] = useState(""),
-    [draft, setDraft] = useState("");
+    [draft, setDraft] = useState(""),
+    [searchTouched, setSearchTouched] = useState(false);
   function selectKind(value) {
     setKind(value);
     setPage(1);
@@ -704,8 +761,11 @@ export function ThreatIndicators() {
       </p>
       <form
         className="threatFilters"
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
+          setSearchTouched(true);
+          if (draft.length > 200) return;
           setSearch(draft.trim());
           setPage(1);
         }}
@@ -714,11 +774,16 @@ export function ThreatIndicators() {
           Search indicators
           <input
             type="search"
-            maxLength={200}
             placeholder="Search URL, domain, email or phone"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => setSearchTouched(true)}
           />
+          {searchTouched && draft.length > 200 && (
+            <span className="fieldError" role="alert">
+              Search must be 200 characters or fewer.
+            </span>
+          )}
         </label>
         <label>
           Indicator type

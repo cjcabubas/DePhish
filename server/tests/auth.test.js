@@ -190,6 +190,57 @@ test("authentication attempts are rate limited", async (t) => {
   );
 });
 
+test("registration enforces matching name and password length boundaries", async (t) => {
+  const { request } = await setup(t);
+  assert.equal(
+    (
+      await request("/api/auth/signup", {
+        name: "Al",
+        email: "two@example.com",
+      })
+    ).status,
+    202,
+  );
+  assert.equal(
+    (
+      await request("/api/auth/signup", {
+        name: "x".repeat(100),
+        email: "hundred@example.com",
+      })
+    ).status,
+    202,
+  );
+  assert.equal(
+    (
+      await request("/api/auth/signup", {
+        name: "A",
+        email: "short-name@example.com",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request("/api/auth/signup", {
+        name: "x".repeat(101),
+        email: "long-name@example.com",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request("/api/auth/signup/verify", {
+        name: "Valid Name",
+        email: "valid@example.com",
+        password: "a".repeat(129),
+        code: "000042",
+      })
+    ).status,
+    400,
+  );
+});
+
 test("MFA does not issue a session before code verification, while disabled MFA keeps password login direct", async (t) => {
   const { request, records } = await setup(t);
   const created = await signupWithOtp(request, account);

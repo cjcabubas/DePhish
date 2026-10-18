@@ -3442,3 +3442,41 @@ textarea {
   display: inline-flex;
   margin-left: 0;
 }
+
+.fieldError {
+  display: block;
+  color: #a73737;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+.logoutConfirm {
+  width: min(420px, 100%);
+}
+.logoutConfirm h2 {
+  margin-top: 0;
+}
+.logoutConfirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+.logoutConfirmActions .outline {
+  margin-left: 0;
+}
+.logoutConfirmActions .primary {
+  min-width: 96px;
+}
+@media (max-width: 540px) {
+  .logoutConfirm {
+    padding: 24px 20px;
+  }
+  .logoutConfirmActions {
+    flex-direction: column-reverse;
+  }
+  .logoutConfirmActions button {
+    width: 100%;
+    min-height: 44px;
+  }
+}

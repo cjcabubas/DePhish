@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
+import { validateOtp, validatePassword } from "../utils/validation";
 
 export function AccountSecurity({ api }) {
   const [state, setState] = useState(null);
@@ -12,6 +13,8 @@ export function AccountSecurity({ api }) {
   const [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
+  const [fieldErrors, setFieldErrors] = useState({}),
+    [touched, setTouched] = useState({});
   async function load() {
     setLoading(true);
     setError("");
@@ -55,6 +58,10 @@ export function AccountSecurity({ api }) {
   async function request(e) {
     e?.preventDefault();
     if (busy) return;
+    const passwordError = validatePassword(password);
+    setTouched((old) => ({ ...old, password: true }));
+    setFieldErrors((old) => ({ ...old, password: passwordError }));
+    if (passwordError) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -73,6 +80,10 @@ export function AccountSecurity({ api }) {
   async function verify(e) {
     e.preventDefault();
     if (busy) return;
+    const codeError = validateOtp(code);
+    setTouched((old) => ({ ...old, code: true }));
+    setFieldErrors((old) => ({ ...old, code: codeError }));
+    if (codeError) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -85,6 +96,8 @@ export function AccountSecurity({ api }) {
       setStep("overview");
       setCode("");
       setPassword("");
+      setTouched({});
+      setFieldErrors({});
       setNotice(
         `Two-step verification is now ${result.mfaEnabled ? "on" : "off"}.`,
       );
@@ -144,6 +157,7 @@ export function AccountSecurity({ api }) {
           {step !== "overview" && (
             <form
               className="securityForm"
+              noValidate
               onSubmit={step === "password" ? request : verify}
               aria-busy={busy}
             >
@@ -163,13 +177,32 @@ export function AccountSecurity({ api }) {
                   Current password
                   <PasswordInput
                     id="security-password"
-                    required
                     autoFocus
                     disabled={busy}
                     autoComplete="current-password"
+                    placeholder="Enter password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (touched.password)
+                        setFieldErrors((old) => ({
+                          ...old,
+                          password: validatePassword(e.target.value),
+                        }));
+                    }}
+                    onBlur={() => {
+                      setTouched((old) => ({ ...old, password: true }));
+                      setFieldErrors((old) => ({
+                        ...old,
+                        password: validatePassword(password),
+                      }));
+                    }}
                   />
+                  {touched.password && fieldErrors.password && (
+                    <span className="fieldError" role="alert">
+                      {fieldErrors.password}
+                    </span>
+                  )}
                 </label>
               ) : (
                 <label htmlFor="security-code">
@@ -177,19 +210,34 @@ export function AccountSecurity({ api }) {
                   <input
                     id="security-code"
                     className="securityCode"
-                    required
                     autoFocus
                     disabled={busy}
                     inputMode="numeric"
                     pattern="[0-9]{6}"
-                    maxLength={6}
                     autoComplete="one-time-code"
-                    placeholder="000000"
+                    placeholder="Enter OTP"
                     value={code}
-                    onChange={(e) =>
-                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                    }
+                    onChange={(e) => {
+                      setCode(e.target.value);
+                      if (touched.code)
+                        setFieldErrors((old) => ({
+                          ...old,
+                          code: validateOtp(e.target.value),
+                        }));
+                    }}
+                    onBlur={() => {
+                      setTouched((old) => ({ ...old, code: true }));
+                      setFieldErrors((old) => ({
+                        ...old,
+                        code: validateOtp(code),
+                      }));
+                    }}
                   />
+                  {touched.code && fieldErrors.code && (
+                    <span className="fieldError" role="alert">
+                      {fieldErrors.code}
+                    </span>
+                  )}
                 </label>
               )}
               {step === "code" && (

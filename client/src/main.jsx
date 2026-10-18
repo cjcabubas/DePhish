@@ -28,6 +28,7 @@ import {
   ReportNotificationDot,
 } from "./components/Reports";
 import { AccountSettings } from "./components/AccountSettings";
+import { validateScanMessage } from "./utils/validation";
 
 import { useReportNotifications } from "./services/reportNotifications";
 
@@ -62,7 +63,8 @@ function App() {
   const [reportSource, setReportSource] = useState(null);
   const [authReady, setAuthReady] = useState(false),
     [accountError, setAccountError] = useState(""),
-    [loggingOut, setLoggingOut] = useState(false);
+    [loggingOut, setLoggingOut] = useState(false),
+    [confirmLogout, setConfirmLogout] = useState(false);
   useEffect(() => {
     let active = true;
     api.auth
@@ -93,6 +95,14 @@ function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  useEffect(() => {
+    if (!confirmLogout) return;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape" && !loggingOut) setConfirmLogout(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [confirmLogout, loggingOut]);
   const openAuth = (mode) => {
     window.history.pushState(null, "", "#" + mode);
     setAuth(mode);
@@ -279,7 +289,11 @@ function App() {
                 </button>
               </div>
             </details>
-            <button className="logout" disabled={loggingOut} onClick={logout}>
+            <button
+              className="logout"
+              disabled={loggingOut}
+              onClick={() => setConfirmLogout(true)}
+            >
               <LogOut size={15} /> Log out
             </button>
           </div>
@@ -298,6 +312,48 @@ function App() {
           </div>
         )}
       </header>
+      {confirmLogout && (
+        <div
+          className="modalShade"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !loggingOut)
+              setConfirmLogout(false);
+          }}
+        >
+          <section
+            className="detailModal logoutConfirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="logoutTitle"
+            aria-describedby="logoutMessage"
+          >
+            <h2 id="logoutTitle">Confirm Logout</h2>
+            <p id="logoutMessage">Are you sure you want to log out?</p>
+            <div className="logoutConfirmActions">
+              <button
+                type="button"
+                className="outline"
+                autoFocus
+                disabled={loggingOut}
+                onClick={() => setConfirmLogout(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={loggingOut}
+                onClick={() => {
+                  setConfirmLogout(false);
+                  void logout();
+                }}
+              >
+                {loggingOut ? "Logging out…" : "Logout"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {accountError && (
         <p className="scanError" role="alert">
           {accountError}
@@ -343,11 +399,15 @@ function App() {
 }
 
 function Scanner({ text, setText, ran, setRan, go }) {
-  const [tosAccepted, setTosAccepted] = useState(false);
-  const [loading, setLoading] = useState(false),
-    [error, setError] = useState("");
+  const [tosAccepted, setTosAccepted] = useState(false),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState(""),
+    [messageTouched, setMessageTouched] = useState(false);
+  const messageError = validateScanMessage(text);
   async function analyze() {
-    if (loading || !tosAccepted) return;
+    if (loading) return;
+    setMessageTouched(true);
+    if (messageError || !tosAccepted) return;
     setLoading(true);
     setError("");
     setRan(false);
@@ -399,7 +459,6 @@ function Scanner({ text, setText, ran, setRan, go }) {
           </div>
           <textarea
             aria-label="Message to scan"
-            maxLength={5000}
             disabled={loading}
             value={text}
             onChange={(e) => {
@@ -407,8 +466,14 @@ function Scanner({ text, setText, ran, setRan, go }) {
               setRan(false);
               setError("");
             }}
+            onBlur={() => setMessageTouched(true)}
             placeholder="Paste an email, SMS, or link to analyze..."
           />
+          {messageTouched && messageError && (
+            <p className="fieldError" role="alert">
+              {messageError}
+            </p>
+          )}
           <TermsBox
             checked={tosAccepted}
             onChange={setTosAccepted}
@@ -425,7 +490,9 @@ function Scanner({ text, setText, ran, setRan, go }) {
             <span>{text.length}/5,000 characters</span>
             <button
               className="primary"
-              disabled={loading || !text.trim() || !tosAccepted}
+              disabled={
+                loading || !text.trim() || !tosAccepted || Boolean(messageError)
+              }
               onClick={analyze}
             >
               <ScanSearch
