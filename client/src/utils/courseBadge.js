@@ -2,18 +2,34 @@ const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 850;
 
 function xml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-  })[char]);
+  return String(value ?? "").replace(
+    /[&<>"']/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&apos;",
+      })[char],
+  );
 }
 
 function badgeSvg({ moduleTitle, learnerName, completedAt }) {
   const date = new Date(completedAt);
   const issued = Number.isNaN(date.getTime())
-    ? 'Completion date unavailable'
-    : date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  const name = String(learnerName || 'DePhish Learner').trim().slice(0, 48);
-  const title = String(moduleTitle || 'Learning Module').trim().slice(0, 54);
+    ? "Completion date unavailable"
+    : date.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+  const name = String(learnerName || "DePhish Learner")
+    .trim()
+    .slice(0, 48);
+  const title = String(moduleTitle || "Learning Module")
+    .trim()
+    .slice(0, 54);
   const titleFontSize = title.length > 36 ? 46 : 56;
   const nameFontSize = name.length > 32 ? 42 : 50;
 
@@ -52,21 +68,30 @@ export function badgePreviewUrl(details) {
 
 async function renderBadge(details, mimeType, quality) {
   const image = new Image();
-  const source = URL.createObjectURL(new Blob([badgeSvg(details)], { type: 'image/svg+xml;charset=utf-8' }));
+  const source = URL.createObjectURL(
+    new Blob([badgeSvg(details)], { type: "image/svg+xml;charset=utf-8" }),
+  );
   try {
     await new Promise((resolve, reject) => {
       image.onload = resolve;
-      image.onerror = () => reject(new Error('Could not render the badge.'));
+      image.onerror = () => reject(new Error("Could not render the badge."));
       image.src = source;
     });
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = SVG_WIDTH;
     canvas.height = SVG_HEIGHT;
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not prepare the badge image.');
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not prepare the badge image.");
     context.drawImage(image, 0, 0, SVG_WIDTH, SVG_HEIGHT);
     return await new Promise((resolve, reject) => {
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not export the badge.')), mimeType, quality);
+      canvas.toBlob(
+        (blob) =>
+          blob
+            ? resolve(blob)
+            : reject(new Error("Could not export the badge.")),
+        mimeType,
+        quality,
+      );
     });
   } finally {
     URL.revokeObjectURL(source);
@@ -75,7 +100,7 @@ async function renderBadge(details, mimeType, quality) {
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.append(link);
@@ -85,7 +110,9 @@ function saveBlob(blob, filename) {
 }
 
 function joinBytes(parts) {
-  const result = new Uint8Array(parts.reduce((size, part) => size + part.length, 0));
+  const result = new Uint8Array(
+    parts.reduce((size, part) => size + part.length, 0),
+  );
   let offset = 0;
   for (const part of parts) {
     result.set(part, offset);
@@ -95,43 +122,61 @@ function joinBytes(parts) {
 }
 
 function pdfWithJpeg(jpegBytes) {
-  const encode = value => new TextEncoder().encode(value);
-  const drawing = 'q\n1200 0 0 850 0 0 cm\n/Badge Do\nQ\n';
+  const encode = (value) => new TextEncoder().encode(value);
+  const drawing = "q\n1200 0 0 850 0 0 cm\n/Badge Do\nQ\n";
   const objects = [
-    encode('<< /Type /Catalog /Pages 2 0 R >>'),
-    encode('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
-    encode('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1200 850] /Resources << /XObject << /Badge 4 0 R >> >> /Contents 5 0 R >>'),
+    encode("<< /Type /Catalog /Pages 2 0 R >>"),
+    encode("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    encode(
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1200 850] /Resources << /XObject << /Badge 4 0 R >> >> /Contents 5 0 R >>",
+    ),
     joinBytes([
-      encode(`<< /Type /XObject /Subtype /Image /Width ${SVG_WIDTH} /Height ${SVG_HEIGHT} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`),
+      encode(
+        `<< /Type /XObject /Subtype /Image /Width ${SVG_WIDTH} /Height ${SVG_HEIGHT} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`,
+      ),
       jpegBytes,
-      encode('\nendstream'),
+      encode("\nendstream"),
     ]),
     encode(`<< /Length ${drawing.length} >>\nstream\n${drawing}endstream`),
   ];
-  const header = encode('%PDF-1.4\n');
+  const header = encode("%PDF-1.4\n");
   const parts = [header];
   const offsets = [0];
   let offset = header.length;
   objects.forEach((body, index) => {
     offsets.push(offset);
-    const wrapped = joinBytes([encode(`${index + 1} 0 obj\n`), body, encode('\nendobj\n')]);
+    const wrapped = joinBytes([
+      encode(`${index + 1} 0 obj\n`),
+      body,
+      encode("\nendobj\n"),
+    ]);
     parts.push(wrapped);
     offset += wrapped.length;
   });
   const xrefOffset = offset;
   let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const objectOffset of offsets.slice(1)) xref += `${String(objectOffset).padStart(10, '0')} 00000 n \n`;
+  for (const objectOffset of offsets.slice(1))
+    xref += `${String(objectOffset).padStart(10, "0")} 00000 n \n`;
   xref += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
   parts.push(encode(xref));
-  return new Blob(parts, { type: 'application/pdf' });
+  return new Blob(parts, { type: "application/pdf" });
 }
 
 export async function downloadBadge(details, format) {
-  const slug = String(details.moduleTitle || 'learning-module').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (format === 'png') {
-    saveBlob(await renderBadge(details, 'image/png'), `dephish-${slug}-badge.png`);
+  const slug = String(details.moduleTitle || "learning-module")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  if (format === "png") {
+    saveBlob(
+      await renderBadge(details, "image/png"),
+      `dephish-${slug}-badge.png`,
+    );
     return;
   }
-  const jpeg = await renderBadge(details, 'image/jpeg', 0.96);
-  saveBlob(pdfWithJpeg(new Uint8Array(await jpeg.arrayBuffer())), `dephish-${slug}-badge.pdf`);
+  const jpeg = await renderBadge(details, "image/jpeg", 0.96);
+  saveBlob(
+    pdfWithJpeg(new Uint8Array(await jpeg.arrayBuffer())),
+    `dephish-${slug}-badge.pdf`,
+  );
 }

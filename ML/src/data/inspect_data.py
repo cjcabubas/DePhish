@@ -2,7 +2,6 @@
 inspect_data.py - Inspects and reports statistics for the DePhish dataset.
 """
 
-import os
 import sys
 import csv
 from collections import Counter
@@ -77,7 +76,7 @@ def inspect_dataset(data_path: Path):
         print(f"  - {mtype:6s} | {label} ({name:10s}): {count:6,}")
     if text_lengths:
         print("-" * 60)
-        print(f"Text Lengths (chars):")
+        print("Text Lengths (chars):")
         print(f"  - Min:    {min(text_lengths):,}")
         print(f"  - Max:    {max(text_lengths):,}")
         print(f"  - Median: {sorted(text_lengths)[len(text_lengths) // 2]:,}")

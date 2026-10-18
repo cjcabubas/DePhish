@@ -2,7 +2,6 @@
 train.py - Fits the production phishing detection model and exports model artifacts.
 """
 
-import os
 import sys
 import json
 import time
@@ -12,7 +11,6 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 
 # Ensure ml root is in sys.path
@@ -20,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from src.features.text_features import CombinedFeaturePipeline, get_dense_feature_names
+from src.features.text_features import CombinedFeaturePipeline
 
 
 def train_model(
@@ -28,7 +26,7 @@ def train_model(
     models_dir: Path,
     c_param: float = 2.0,
     max_features: int = 15000,
-    model_version: str = "1.0.0"
+    model_version: str = "1.0.0",
 ):
     print("=" * 60)
     print("  DePhish Production Model Training")
@@ -56,6 +54,7 @@ def train_model(
     print(f"\nTraining Calibrated Linear SVM (LinearSVC C={c_param})...")
     from sklearn.svm import LinearSVC
     from sklearn.calibration import CalibratedClassifierCV
+
     base_svc = LinearSVC(C=c_param, dual=False, random_state=42)
     model = CalibratedClassifierCV(estimator=base_svc, cv=5)
 

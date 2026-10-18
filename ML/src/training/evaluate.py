@@ -2,16 +2,15 @@
 evaluate.py - Evaluates trained DePhish model on the test dataset and exports performance reports.
 """
 
-import os
 import sys
 import json
 import argparse
 from pathlib import Path
 
-import joblib
 import pandas as pd
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -22,7 +21,7 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
     confusion_matrix,
-    classification_report
+    classification_report,
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -32,11 +31,7 @@ if str(BASE_DIR) not in sys.path:
 from src.inference.predict import PhishingDetector
 
 
-def evaluate_model(
-    test_path: Path,
-    models_dir: Path,
-    reports_dir: Path
-):
+def evaluate_model(test_path: Path, models_dir: Path, reports_dir: Path):
     print("=" * 60)
     print("  DePhish Model Evaluation")
     print("=" * 60)
@@ -55,7 +50,9 @@ def evaluate_model(
     y_test = test_df["check"].values
     probabilities = []
     for start in range(0, len(test_df), 128):
-        probabilities.extend(detector.predict_probabilities(test_df["text"].iloc[start:start+128].tolist())[:, 1])
+        probabilities.extend(
+            detector.predict_probabilities(test_df["text"].iloc[start : start + 128].tolist())[:, 1]
+        )
     probs = np.asarray(probabilities)
     preds = (probs >= 0.5).astype(int)
 
@@ -79,7 +76,9 @@ def evaluate_model(
     print(f"  True Positives:   {tp:,}")
 
     print("\nFull Classification Report:")
-    report_dict = classification_report(y_test, preds, target_names=["Legitimate (0)", "Phishing (1)"], output_dict=True)
+    report_dict = classification_report(
+        y_test, preds, target_names=["Legitimate (0)", "Phishing (1)"], output_dict=True
+    )
     print(classification_report(y_test, preds, target_names=["Legitimate (0)", "Phishing (1)"]))
 
     # Save reports

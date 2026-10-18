@@ -1,60 +1,469 @@
-import React, { useEffect, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import { ShieldCheck, ScanSearch, GraduationCap, Flag, LayoutDashboard, ArrowRight, LockKeyhole, ClipboardList, LogOut, Settings, ChevronDown } from "lucide-react";
-import { Auth } from './components/Auth';
+import React, { useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  ShieldCheck,
+  ScanSearch,
+  GraduationCap,
+  Flag,
+  LayoutDashboard,
+  ArrowRight,
+  LockKeyhole,
+  ClipboardList,
+  LogOut,
+  Settings,
+  ChevronDown,
+} from "lucide-react";
+import { Auth } from "./components/Auth";
 import { TermsBox } from "./components/TermsBox";
 import { Learn } from "./components/Learn";
 import { withScanLoading } from "./services/scanLoading";
-import { api } from './services/api';
-import './styles.css';
+import { api } from "./services/api";
+import "./styles.css";
 import { Dashboard } from "./components/Dashboards";
-import { ScanResult as Result } from './components/ScanResult';
-import { Report, ReportManagement, ThreatIndicators, ReportNotificationDot } from './components/Reports';
-import { AccountSettings } from './components/AccountSettings';
+import { ScanResult as Result } from "./components/ScanResult";
+import {
+  Report,
+  ReportManagement,
+  ThreatIndicators,
+  ReportNotificationDot,
+} from "./components/Reports";
+import { AccountSettings } from "./components/AccountSettings";
 
-import { useReportNotifications } from './services/reportNotifications';
+import { useReportNotifications } from "./services/reportNotifications";
 
-const nav = [{id:'scanner',label:'Scanner',icon:ScanSearch},{id:'learn',label:'Learn',icon:GraduationCap},{id:'report',label:'Report',icon:Flag}];
-const sample = 'From: Security Team <security-alert@paypaI-account.com>\nSubject: Urgent: Your account will be limited\n\nVerify your account immediately at https://paypal-secure-login.net/verify. Please confirm your password and card details.';
+const nav = [
+  { id: "scanner", label: "Scanner", icon: ScanSearch },
+  { id: "learn", label: "Learn", icon: GraduationCap },
+  { id: "report", label: "Report", icon: Flag },
+];
 
-const AUTH_PAGES = new Set(['login','signup','forgot-password']);
-function pageFromUrl(){const id=window.location.hash.slice(1);return id==='security'?'account-settings':id||'scanner';}
-function App(){
- const [page,setPage]=useState(()=>{const h=pageFromUrl();return AUTH_PAGES.has(h)?'scanner':h;});
- const [auth,setAuth]=useState(()=>{const h=pageFromUrl();return AUTH_PAGES.has(h)?h:null;});
- const [user,setUser]=useState(null),[text,setText]=useState(''),[ran,setRan]=useState(false);
- const unreadCount = useReportNotifications(user?.id);
- const [reportSource,setReportSource]=useState(null);
- const [authReady,setAuthReady]=useState(false),[accountError,setAccountError]=useState(''),[loggingOut,setLoggingOut]=useState(false);
- useEffect(()=>{let active=true;api.auth.me().then(session=>{if(active)setUser(session.user)}).catch(()=>{}).finally(()=>{if(active)setAuthReady(true)});return ()=>{active=false}},[]);
- // Sync browser back/forward to page and auth state
- useEffect(()=>{
-   const onPop=()=>{
-     const h=pageFromUrl();
-     if(AUTH_PAGES.has(h)){setAuth(h);}
-     else{setAuth(null);setPage(h);}
-   };
-   window.addEventListener('popstate',onPop);
-   return ()=>window.removeEventListener('popstate',onPop);
- },[]);
- const openAuth=(mode)=>{window.history.pushState(null,'','#'+mode);setAuth(mode);};
- const go=(p,source=null)=>{
-   if((p==='user-dashboard'||p==='learn'||p==='account-settings')&&!user){openAuth('login');return;}
-   if(p.startsWith('admin-')&&user?.role!=='admin')return;
-   if(p==='report')setReportSource(source);
-   if(p!==page||auth){window.history.pushState(null,'','#'+p);}
-   setAuth(null);setPage(p);
- };
- const dashboard=user?.role==='admin'?'admin-dashboard':'user-dashboard';
- function finishAuth(session){api.scans.clear();setUser(session.user);setAccountError('');const dest=session.user.role==='admin'?'admin-dashboard':'user-dashboard';window.history.pushState(null,'','#'+dest);setAuth(null);setPage(dest);}
- async function submit(form){if(auth==='signup'&&form.requestOnly){await api.auth.signup(form);return null;}if(auth==='signup'){const session=await api.auth.verifySignup(form);finishAuth(session);return session;}const result=await api.auth.login(form);if(result.mfaRequired)return result;finishAuth(result);return result;}
- async function logout(){if(loggingOut)return;setLoggingOut(true);setAccountError('');try{await api.auth.logout();api.scans.clear();setUser(null);setReportSource(null);setText('');setRan(false);window.history.pushState(null,'','#scanner');setPage('scanner')}catch(error){setAccountError(error.message)}finally{setLoggingOut(false)}}
- if(auth)return <Auth key={auth} mode={auth} setMode={(m)=>{if(m===null){go('scanner');}else{openAuth(m);}}} submit={submit} requestPasswordReset={api.auth.requestPasswordReset} verifyPasswordReset={api.auth.verifyPasswordReset} completePasswordReset={api.auth.completePasswordReset} verifySignup={submit} resendSignup={api.auth.resendSignup} verifyMfaLogin={async fields=>finishAuth(await api.auth.verifyMfaLogin(fields))} resendMfaLogin={api.auth.resendMfaLogin}/>;
- return <div className="app"><header><button className="brand" onClick={()=>go(user?.role==='admin'?'admin-dashboard':'scanner')}><span className="brandmark"><ShieldCheck size={25}/></span><span>De<span>Phish</span></span></button><nav>{user?.role==='admin'?<><button className={page==='admin-dashboard'?'active':''} onClick={()=>go('admin-dashboard')}><LayoutDashboard size={17}/>Dashboard</button><button className={page==='admin-reports'?'active':''} onClick={()=>go('admin-reports')}><ClipboardList size={17}/>Scan Reports</button><button className={page==='admin-indicators'?'active':''} onClick={()=>go('admin-indicators')}><ShieldCheck size={17}/>Threat Indicators</button></>:<>{nav.map(n=><button className={page===n.id?'active':''} onClick={()=>go(n.id)} key={n.id}><n.icon size={17}/>{n.label}{n.id==='report' && unreadCount > 0 && <ReportNotificationDot/>}</button>)}<button className={page==='user-dashboard'?'active':''} onClick={()=>go(dashboard)}><LayoutDashboard size={17}/>Dashboard</button></>}</nav>{user?<div className="account"><details className="profileMenu"><summary className="profile" aria-label="Open profile menu" title="Profile"><span className="profileInitials">{user.name.slice(0,2).toUpperCase()}</span><ChevronDown className="profileChevron" size={15} aria-hidden="true"/></summary><div className="profileDropdown"><strong>{user.name}</strong><button onClick={e=>{e.currentTarget.closest("details").open=false;go("account-settings");}}><Settings size={17}/>Account settings</button></div></details><button className="logout" disabled={loggingOut} onClick={logout}><LogOut size={15}/> Log out</button></div>:<div className="authActions"><button disabled={!authReady} onClick={()=>openAuth('login')}>Log in</button><button className="primary small" disabled={!authReady} onClick={()=>openAuth('signup')}>Sign up</button></div>}</header>{accountError&&<p className="scanError" role="alert">{accountError}</p>}<main>{page==='scanner'&&<Scanner text={text} setText={setText} ran={ran} setRan={setRan} go={go}/>} {page==='learn'&&user&&<Learn user={user}/>} {page==='report'&&<Report key={reportSource?.sourceScanId || reportSource?.message || 'manual'} source={reportSource} authenticated={Boolean(user)} unreadCount={unreadCount}/>} {page==='admin-indicators'&&user?.role==='admin'&&<ThreatIndicators/>} {page==='user-dashboard'&&user&&<Dashboard go={go}/>} {page==='admin-dashboard'&&user?.role==='admin'&&<Dashboard admin go={go}/>} {page==='admin-reports'&&user?.role==='admin'&&<ReportManagement/>} {page==='account-settings'&&user&&<AccountSettings user={user} api={api.auth}/>}</main></div>
+const sample =
+  "From: Security Team <security-alert@paypaI-account.com>\nSubject: Urgent: Your account will be limited\n\nVerify your account immediately at https://paypal-secure-login.net/verify. Please confirm your password and card details.";
+
+const AUTH_PAGES = new Set(["login", "signup", "forgot-password"]);
+function pageFromUrl() {
+  const id = window.location.hash.slice(1);
+  return id === "security" ? "account-settings" : id || "scanner";
 }
-function Scanner({text,setText,ran,setRan,go}){const [tosAccepted,setTosAccepted]=useState(false);const [loading,setLoading]=useState(false),[error,setError]=useState('');
- async function analyze(){if(loading||!tosAccepted)return;setLoading(true);setError('');setRan(false);try{setRan(await withScanLoading(()=>api.scans.analyze(text,'auto',{tosAccepted: Boolean(tosAccepted), termsVersion: tosAccepted})))}catch(e){setError(e.message)}finally{setLoading(false)}}
- return <><section className="hero"><div className="eyebrow"><span/>PHISHING DETECTION & AWARENESS</div><h1>Think before you click.</h1><p>Check suspicious messages in seconds. Learn the signs. Stay one step ahead of phishing.</p></section><section className="scannerWrap"><div className="scannerCard"><div className="cardTop"><div><h2>Scan a suspicious message</h2><p>Paste any message you want to check — an email, an SMS, or just a link. Scanning also contacts detected links to check domain and certificate details. Saved reports mask recognized personal identifiers and secrets. Signed-in scans also appear in your history.</p></div><span className="secure"><LockKeyhole size={15}/> Secure scan</span></div><textarea aria-label="Message to scan" maxLength={5000} disabled={loading} value={text} onChange={e=>{setText(e.target.value);setRan(false);setError('')}} placeholder="Paste an email, SMS, or link to analyze..."/><TermsBox checked={tosAccepted} onChange={setTosAccepted} disabled={loading}/><div className="scanFoot"><button className="sample" disabled={loading} onClick={()=>setText(sample)}>Try a sample message <ArrowRight size={15}/></button><span>{text.length}/5,000 characters</span><button className="primary" disabled={loading||!text.trim()||!tosAccepted} onClick={analyze}><ScanSearch className={loading?"scanSpinner":undefined} size={18}/>{loading?'Analyzing…':'Analyze message'}</button></div>{loading&&<p className="scanLoading" role="status">Analyzing your message and available link evidence…</p>}{error&&<p className="scanError" role="alert">{error}</p>}</div>{ran&&<Result result={ran} go={p=>go(p,{message:text,sourceScanId:ran.persistence?.scope==='account'?ran.persistence.id:undefined})}/>}</section></>}
-createRoot(document.getElementById("root")).render(<App/>);
 
+function App() {
+  const [page, setPage] = useState(() => {
+    const h = pageFromUrl();
+    return AUTH_PAGES.has(h) ? "scanner" : h;
+  });
+  const [auth, setAuth] = useState(() => {
+    const h = pageFromUrl();
+    return AUTH_PAGES.has(h) ? h : null;
+  });
+  const [user, setUser] = useState(null),
+    [text, setText] = useState(""),
+    [ran, setRan] = useState(false);
+  const unreadCount = useReportNotifications(user?.id);
+  const [reportSource, setReportSource] = useState(null);
+  const [authReady, setAuthReady] = useState(false),
+    [accountError, setAccountError] = useState(""),
+    [loggingOut, setLoggingOut] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.auth
+      .me()
+      .then((session) => {
+        if (active) setUser(session.user);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
+  // Sync browser back/forward to page and auth state
+  useEffect(() => {
+    const onPop = () => {
+      const h = pageFromUrl();
+      if (AUTH_PAGES.has(h)) {
+        setAuth(h);
+      } else {
+        setAuth(null);
+        setPage(h);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  const openAuth = (mode) => {
+    window.history.pushState(null, "", "#" + mode);
+    setAuth(mode);
+  };
+  const go = (p, source = null) => {
+    if (
+      (p === "user-dashboard" || p === "learn" || p === "account-settings") &&
+      !user
+    ) {
+      openAuth("login");
+      return;
+    }
+    if (p.startsWith("admin-") && user?.role !== "admin") return;
+    if (p === "report") setReportSource(source);
+    if (p !== page || auth) {
+      window.history.pushState(null, "", "#" + p);
+    }
+    setAuth(null);
+    setPage(p);
+  };
+  const dashboard =
+    user?.role === "admin" ? "admin-dashboard" : "user-dashboard";
+  function finishAuth(session) {
+    api.scans.clear();
+    setUser(session.user);
+    setAccountError("");
+    const dest =
+      session.user.role === "admin" ? "admin-dashboard" : "user-dashboard";
+    window.history.pushState(null, "", "#" + dest);
+    setAuth(null);
+    setPage(dest);
+  }
+  async function submit(form) {
+    if (auth === "signup" && form.requestOnly) {
+      await api.auth.signup(form);
+      return null;
+    }
+    if (auth === "signup") {
+      const session = await api.auth.verifySignup(form);
+      finishAuth(session);
+      return session;
+    }
+    const result = await api.auth.login(form);
+    if (result.mfaRequired) return result;
+    finishAuth(result);
+    return result;
+  }
+  async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setAccountError("");
+    try {
+      await api.auth.logout();
+      api.scans.clear();
+      setUser(null);
+      setReportSource(null);
+      setText("");
+      setRan(false);
+      window.history.pushState(null, "", "#scanner");
+      setPage("scanner");
+    } catch (error) {
+      setAccountError(error.message);
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+  if (auth)
+    return (
+      <Auth
+        key={auth}
+        mode={auth}
+        setMode={(m) => {
+          if (m === null) {
+            go("scanner");
+          } else {
+            openAuth(m);
+          }
+        }}
+        submit={submit}
+        requestPasswordReset={api.auth.requestPasswordReset}
+        verifyPasswordReset={api.auth.verifyPasswordReset}
+        completePasswordReset={api.auth.completePasswordReset}
+        verifySignup={submit}
+        resendSignup={api.auth.resendSignup}
+        verifyMfaLogin={async (fields) =>
+          finishAuth(await api.auth.verifyMfaLogin(fields))
+        }
+        resendMfaLogin={api.auth.resendMfaLogin}
+      />
+    );
+  return (
+    <div className="app">
+      <header>
+        <button
+          className="brand"
+          onClick={() =>
+            go(user?.role === "admin" ? "admin-dashboard" : "scanner")
+          }
+        >
+          <span className="brandmark">
+            <ShieldCheck size={25} />
+          </span>
+          <span>
+            De<span>Phish</span>
+          </span>
+        </button>
+        <nav>
+          {user?.role === "admin" ? (
+            <>
+              <button
+                className={page === "admin-dashboard" ? "active" : ""}
+                onClick={() => go("admin-dashboard")}
+              >
+                <LayoutDashboard size={17} />
+                Dashboard
+              </button>
+              <button
+                className={page === "admin-reports" ? "active" : ""}
+                onClick={() => go("admin-reports")}
+              >
+                <ClipboardList size={17} />
+                Scan Reports
+              </button>
+              <button
+                className={page === "admin-indicators" ? "active" : ""}
+                onClick={() => go("admin-indicators")}
+              >
+                <ShieldCheck size={17} />
+                Threat Indicators
+              </button>
+            </>
+          ) : (
+            <>
+              {nav.map((n) => (
+                <button
+                  className={page === n.id ? "active" : ""}
+                  onClick={() => go(n.id)}
+                  key={n.id}
+                >
+                  <n.icon size={17} />
+                  {n.label}
+                  {n.id === "report" && unreadCount > 0 && (
+                    <ReportNotificationDot />
+                  )}
+                </button>
+              ))}
+              <button
+                className={page === "user-dashboard" ? "active" : ""}
+                onClick={() => go(dashboard)}
+              >
+                <LayoutDashboard size={17} />
+                Dashboard
+              </button>
+            </>
+          )}
+        </nav>
+        {user ? (
+          <div className="account">
+            <details className="profileMenu">
+              <summary
+                className="profile"
+                aria-label="Open profile menu"
+                title="Profile"
+              >
+                <span className="profileInitials">
+                  {user.name.slice(0, 2).toUpperCase()}
+                </span>
+                <ChevronDown
+                  className="profileChevron"
+                  size={15}
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="profileDropdown">
+                <strong>{user.name}</strong>
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.closest("details").open = false;
+                    go("account-settings");
+                  }}
+                >
+                  <Settings size={17} />
+                  Account settings
+                </button>
+              </div>
+            </details>
+            <button className="logout" disabled={loggingOut} onClick={logout}>
+              <LogOut size={15} /> Log out
+            </button>
+          </div>
+        ) : (
+          <div className="authActions">
+            <button disabled={!authReady} onClick={() => openAuth("login")}>
+              Log in
+            </button>
+            <button
+              className="primary small"
+              disabled={!authReady}
+              onClick={() => openAuth("signup")}
+            >
+              Sign up
+            </button>
+          </div>
+        )}
+      </header>
+      {accountError && (
+        <p className="scanError" role="alert">
+          {accountError}
+        </p>
+      )}
+      <main>
+        {page === "scanner" && (
+          <Scanner
+            text={text}
+            setText={setText}
+            ran={ran}
+            setRan={setRan}
+            go={go}
+          />
+        )}{" "}
+        {page === "learn" && user && <Learn user={user} />}{" "}
+        {page === "report" && (
+          <Report
+            key={
+              reportSource?.sourceScanId || reportSource?.message || "manual"
+            }
+            source={reportSource}
+            authenticated={Boolean(user)}
+            unreadCount={unreadCount}
+          />
+        )}{" "}
+        {page === "admin-indicators" && user?.role === "admin" && (
+          <ThreatIndicators />
+        )}{" "}
+        {page === "user-dashboard" && user && <Dashboard go={go} />}{" "}
+        {page === "admin-dashboard" && user?.role === "admin" && (
+          <Dashboard admin go={go} />
+        )}{" "}
+        {page === "admin-reports" && user?.role === "admin" && (
+          <ReportManagement />
+        )}{" "}
+        {page === "account-settings" && user && (
+          <AccountSettings user={user} api={api.auth} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function Scanner({ text, setText, ran, setRan, go }) {
+  const [tosAccepted, setTosAccepted] = useState(false);
+  const [loading, setLoading] = useState(false),
+    [error, setError] = useState("");
+  async function analyze() {
+    if (loading || !tosAccepted) return;
+    setLoading(true);
+    setError("");
+    setRan(false);
+    try {
+      setRan(
+        await withScanLoading(() =>
+          api.scans.analyze(text, "auto", {
+            tosAccepted: Boolean(tosAccepted),
+            termsVersion: tosAccepted,
+          }),
+        ),
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="hero">
+        <div className="eyebrow">
+          <span />
+          PHISHING DETECTION & AWARENESS
+        </div>
+        <h1>Think before you click.</h1>
+        <p>
+          Check suspicious messages in seconds. Learn the signs. Stay one step
+          ahead of phishing.
+        </p>
+      </section>
+      <section className="scannerWrap">
+        <div className="scannerCard">
+          <div className="cardTop">
+            <div>
+              <h2>Scan a suspicious message</h2>
+              <p>
+                Paste any message you want to check — an email, an SMS, or just
+                a link. Scanning also contacts detected links to check domain
+                and certificate details. Saved reports mask recognized personal
+                identifiers and secrets. Signed-in scans also appear in your
+                history.
+              </p>
+            </div>
+            <span className="secure">
+              <LockKeyhole size={15} /> Secure scan
+            </span>
+          </div>
+          <textarea
+            aria-label="Message to scan"
+            maxLength={5000}
+            disabled={loading}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setRan(false);
+              setError("");
+            }}
+            placeholder="Paste an email, SMS, or link to analyze..."
+          />
+          <TermsBox
+            checked={tosAccepted}
+            onChange={setTosAccepted}
+            disabled={loading}
+          />
+          <div className="scanFoot">
+            <button
+              className="sample"
+              disabled={loading}
+              onClick={() => setText(sample)}
+            >
+              Try a sample message <ArrowRight size={15} />
+            </button>
+            <span>{text.length}/5,000 characters</span>
+            <button
+              className="primary"
+              disabled={loading || !text.trim() || !tosAccepted}
+              onClick={analyze}
+            >
+              <ScanSearch
+                className={loading ? "scanSpinner" : undefined}
+                size={18}
+              />
+              {loading ? "Analyzing…" : "Analyze message"}
+            </button>
+          </div>
+          {loading && (
+            <p className="scanLoading" role="status">
+              Analyzing your message and available link evidence…
+            </p>
+          )}
+          {error && (
+            <p className="scanError" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+
+        {ran && (
+          <Result
+            result={ran}
+            go={(p) =>
+              go(p, {
+                message: text,
+                sourceScanId:
+                  ran.persistence?.scope === "account"
+                    ? ran.persistence.id
+                    : undefined,
+              })
+            }
+          />
+        )}
+      </section>
+    </>
+  );
+}
+
+createRoot(document.getElementById("root")).render(<App />);

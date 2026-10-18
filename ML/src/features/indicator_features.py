@@ -5,7 +5,7 @@ and feature extraction for ML training.
 """
 
 import re
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
 
 INDICATOR_PATTERNS = {
@@ -113,13 +113,15 @@ def extract_indicators(text: str) -> List[Dict[str, Any]]:
                         matched_phrases.append(cleaned_m)
 
         if matched_phrases:
-            detected.append({
-                "category": cat_key,
-                "title": cat_meta["title"],
-                "description": cat_meta["description"],
-                "severity": cat_meta["severity"],
-                "matched_terms": matched_phrases[:5],  # Top 5 unique matches
-            })
+            detected.append(
+                {
+                    "category": cat_key,
+                    "title": cat_meta["title"],
+                    "description": cat_meta["description"],
+                    "severity": cat_meta["severity"],
+                    "matched_terms": matched_phrases[:5],  # Top 5 unique matches
+                }
+            )
 
     # Structural anomalies
     structural_flags = []
@@ -128,7 +130,9 @@ def extract_indicators(text: str) -> List[Dict[str, Any]]:
     if letters:
         upper_ratio = sum(1 for ch in letters if ch.isupper()) / len(letters)
         if upper_ratio > 0.35 and len(text) > 40:
-            structural_flags.append(f"High uppercase text ({upper_ratio * 100:.0f}%) indicating urgency/shouting")
+            structural_flags.append(
+                f"High uppercase text ({upper_ratio * 100:.0f}%) indicating urgency/shouting"
+            )
 
     # 2. Exclamation marks
     exclamation_count = text.count("!")
@@ -146,13 +150,15 @@ def extract_indicators(text: str) -> List[Dict[str, Any]]:
         structural_flags.append(f"Direct phone contact solicitation: {phone_matches[0]}")
 
     if structural_flags:
-        detected.append({
-            "category": "structural_anomalies",
-            "title": "Message Formatting Anomalies",
-            "description": "Contains atypical formatting cues frequently correlated with spam and phishing.",
-            "severity": "low",
-            "matched_terms": structural_flags,
-        })
+        detected.append(
+            {
+                "category": "structural_anomalies",
+                "title": "Message Formatting Anomalies",
+                "description": "Contains atypical formatting cues frequently correlated with spam and phishing.",
+                "severity": "low",
+                "matched_terms": structural_flags,
+            }
+        )
 
     return detected
 

@@ -1,4 +1,5 @@
 """Bounded, per-process request limits for direct ML API access."""
+
 import math
 import time
 from starlette.responses import JSONResponse
@@ -27,11 +28,14 @@ class RequestBudget:
 def install_rate_limit(app, budget=None):
     budget = budget or RequestBudget()
 
-    @app.middleware('http')
+    @app.middleware("http")
     async def limit_requests(request, call_next):
-        if request.url.path.startswith('/api/'):
-            retry = budget.take(request.client.host if request.client else 'unknown')
+        if request.url.path.startswith("/api/"):
+            retry = budget.take(request.client.host if request.client else "unknown")
             if retry:
-                return JSONResponse({'detail': 'Too many ML API requests. Please try again later.'},
-                                    status_code=429, headers={'Retry-After': str(retry), 'Cache-Control': 'no-store'})
+                return JSONResponse(
+                    {"detail": "Too many ML API requests. Please try again later."},
+                    status_code=429,
+                    headers={"Retry-After": str(retry), "Cache-Control": "no-store"},
+                )
         return await call_next(request)

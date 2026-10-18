@@ -3,7 +3,7 @@ text_features.py - Text feature extraction and combined feature assembly for DeP
 """
 
 import re
-from typing import List, Dict, Any, Union
+from typing import List
 import numpy as np
 from scipy import sparse
 from sklearn.feature_extraction.text import TfidfVectorizer

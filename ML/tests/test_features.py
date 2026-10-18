@@ -2,7 +2,6 @@
 test_features.py - Tests URL extraction, indicator heuristic detection, and text feature pipelines.
 """
 
-import pytest
 from pathlib import Path
 import sys
 
@@ -10,9 +9,9 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from src.features.url_features import extract_urls, analyze_url, extract_url_feature_dict
-from src.features.indicator_features import extract_indicators, classify_phishing_type, extract_indicator_features
-from src.features.text_features import normalize_text, CombinedFeaturePipeline
+from src.features.url_features import extract_urls, analyze_url
+from src.features.indicator_features import extract_indicators, classify_phishing_type
+from src.features.text_features import CombinedFeaturePipeline
 
 
 def test_url_extraction():
@@ -47,7 +46,9 @@ def test_indicator_credential_detection():
 
 
 def test_indicator_financial_bait():
-    sample = "Congratulations! You have won a free $1,000 gift card lottery prize! Claim reward now."
+    sample = (
+        "Congratulations! You have won a free $1,000 gift card lottery prize! Claim reward now."
+    )
     indicators = extract_indicators(sample)
     cats = [ind["category"] for ind in indicators]
     assert "financial_bait" in cats

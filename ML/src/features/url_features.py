@@ -9,19 +9,46 @@ from typing import List, Dict, Any
 URL_REGEX = re.compile(
     r"(?:https?://|ftp://|www\.)[^\s/$.?#].[^\s]*|"
     r"(?:[a-zA-Z0-9-]+\.)+(?:com|org|net|edu|gov|io|co|me|biz|info|xyz|top|site|club|vip|online|click|loan|zip|work|cc|tk|ml|ga|cf|gq)(?:/[^\s]*)?",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 IP_REGEX = re.compile(r"^https?://(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?(?:/.*)?$", re.IGNORECASE)
 
 KNOWN_SHORTENERS = {
-    "bit.ly", "tinyurl.com", "goo.gl", "ow.ly", "is.gd", "buff.ly", "t.co",
-    "tiny.cc", "rb.gy", "cutt.ly", "adf.ly", "bit.do", "bl.ink", "shorturl.at"
+    "bit.ly",
+    "tinyurl.com",
+    "goo.gl",
+    "ow.ly",
+    "is.gd",
+    "buff.ly",
+    "t.co",
+    "tiny.cc",
+    "rb.gy",
+    "cutt.ly",
+    "adf.ly",
+    "bit.do",
+    "bl.ink",
+    "shorturl.at",
 }
 
 SUSPICIOUS_TLDS = {
-    "xyz", "top", "work", "loan", "click", "country", "kim", "cricket",
-    "science", "party", "gq", "cf", "tk", "ml", "ga", "zip", "mov"
+    "xyz",
+    "top",
+    "work",
+    "loan",
+    "click",
+    "country",
+    "kim",
+    "cricket",
+    "science",
+    "party",
+    "gq",
+    "cf",
+    "tk",
+    "ml",
+    "ga",
+    "zip",
+    "mov",
 }
 
 

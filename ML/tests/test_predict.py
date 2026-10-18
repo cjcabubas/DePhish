@@ -29,11 +29,17 @@ def test_empty_message_rejected(detector):
 
 def test_score_is_unboosted_model_estimate():
     from src.inference.predict import score_prediction
-    for probability, label in [(0.349, "Legitimate"), (.35, "Suspicious"), (.699, "Suspicious"), (.70, "Phishing")]:
+
+    for probability, label in [
+        (0.349, "Legitimate"),
+        (0.35, "Suspicious"),
+        (0.699, "Suspicious"),
+        (0.70, "Phishing"),
+    ]:
         result = score_prediction(probability)
         assert result["prediction"] == label
         assert result["risk_score"] == round(probability * 100, 1)
-        assert result["confidence"] == round(max(probability, 1-probability), 4)
+        assert result["confidence"] == round(max(probability, 1 - probability), 4)
 
 
 def test_phishing_message_detected(detector):

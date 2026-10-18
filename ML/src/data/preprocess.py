@@ -2,8 +2,6 @@
 preprocess.py - Cleans, deduplicates, and splits the DePhish dataset into train and test sets.
 """
 
-import os
-import sys
 import csv
 import re
 import argparse
@@ -24,10 +22,7 @@ def clean_text(text: str) -> str:
 
 
 def run_preprocessing(
-    input_path: Path,
-    output_dir: Path,
-    test_size: float = 0.2,
-    random_state: int = 42
+    input_path: Path, output_dir: Path, test_size: float = 0.2, random_state: int = 42
 ):
     print(f"Reading dataset from: {input_path}")
     if not input_path.exists():
@@ -57,11 +52,7 @@ def run_preprocessing(
             if not cleaned or len(cleaned) < 3:
                 continue
 
-            records.append({
-                "type": raw_type,
-                "text": cleaned,
-                "check": int(raw_check)
-            })
+            records.append({"type": raw_type, "text": cleaned, "check": int(raw_check)})
 
     df = pd.DataFrame(records)
     print(f"Loaded {len(df):,} valid rows.")
@@ -82,10 +73,7 @@ def run_preprocessing(
     # Stratified Train/Test Split on combined (type + check)
     df["stratify_key"] = df["type"] + "_" + df["check"].astype(str)
     train_df, test_df = train_test_split(
-        df,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=df["stratify_key"]
+        df, test_size=test_size, random_state=random_state, stratify=df["stratify_key"]
     )
 
     train_df = train_df.drop(columns=["stratify_key"]).reset_index(drop=True)
@@ -101,9 +89,17 @@ def run_preprocessing(
     print(f"Test split saved to:  {test_path} ({len(test_df):,} samples)")
 
     print("\nTrain distribution:")
-    print(train_df["check"].value_counts(normalize=True).rename({0: "Legitimate (0)", 1: "Phishing (1)"}))
+    print(
+        train_df["check"]
+        .value_counts(normalize=True)
+        .rename({0: "Legitimate (0)", 1: "Phishing (1)"})
+    )
     print("\nTest distribution:")
-    print(test_df["check"].value_counts(normalize=True).rename({0: "Legitimate (0)", 1: "Phishing (1)"}))
+    print(
+        test_df["check"]
+        .value_counts(normalize=True)
+        .rename({0: "Legitimate (0)", 1: "Phishing (1)"})
+    )
 
     return train_path, test_path
 

@@ -2,8 +2,15 @@
   "name": "dephish-dev",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "dev": "node dev.mjs"
+    "dev": "node dev.mjs",
+    "format": "node client/node_modules/prettier/bin/prettier.cjs --write \"client/**/*.{js,jsx,css,json,html}\" \"server/**/*.js\" server/package.json package.json dev.mjs .prettierrc.json",
+    "format:check": "node client/node_modules/prettier/bin/prettier.cjs --check \"client/**/*.{js,jsx,css,json,html}\" \"server/**/*.js\" server/package.json package.json dev.mjs .prettierrc.json",
+    "lint": "node client/node_modules/eslint/bin/eslint.js --config client/eslint.config.js \"client/**/*.{js,jsx}\" \"server/**/*.js\" dev.mjs",
+    "test": "npm --prefix client test && npm --prefix server test",
+    "check": "npm run format:check && npm run lint && npm test && npm --prefix client run build"
   }
 }

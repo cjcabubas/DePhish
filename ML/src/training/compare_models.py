@@ -3,10 +3,8 @@ compare_models.py - Benchmarks multiple classifier architectures on the DePhish 
 """
 
 import time
-import argparse
 from pathlib import Path
 import pandas as pd
-import numpy as np
 
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
@@ -16,6 +14,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.features.text_features import CombinedFeaturePipeline
 
@@ -43,8 +42,12 @@ def run_benchmark(train_path: Path, test_path: Path):
     models = {
         "Multinomial Naive Bayes": MultinomialNB(alpha=0.1),
         "Calibrated Logistic Regression": LogisticRegression(C=2.0, max_iter=1000, random_state=42),
-        "Calibrated Linear SVM": CalibratedClassifierCV(LinearSVC(C=1.0, dual=False, random_state=42)),
-        "Random Forest (100 trees)": RandomForestClassifier(n_estimators=100, max_depth=30, random_state=42, n_jobs=-1),
+        "Calibrated Linear SVM": CalibratedClassifierCV(
+            LinearSVC(C=1.0, dual=False, random_state=42)
+        ),
+        "Random Forest (100 trees)": RandomForestClassifier(
+            n_estimators=100, max_depth=30, random_state=42, n_jobs=-1
+        ),
     }
 
     results = []
@@ -69,16 +72,18 @@ def run_benchmark(train_path: Path, test_path: Path):
         f1 = f1_score(y_test, preds, zero_division=0)
         roc = roc_auc_score(y_test, probs)
 
-        results.append({
-            "Model": name,
-            "Accuracy": f"{acc:.4f}",
-            "Precision": f"{prec:.4f}",
-            "Recall": f"{rec:.4f}",
-            "F1-Score": f"{f1:.4f}",
-            "ROC-AUC": f"{roc:.4f}",
-            "Train Time (s)": f"{train_time:.2f}",
-            "Inference (ms/sample)": f"{(test_time / len(y_test)) * 1000:.3f}",
-        })
+        results.append(
+            {
+                "Model": name,
+                "Accuracy": f"{acc:.4f}",
+                "Precision": f"{prec:.4f}",
+                "Recall": f"{rec:.4f}",
+                "F1-Score": f"{f1:.4f}",
+                "ROC-AUC": f"{roc:.4f}",
+                "Train Time (s)": f"{train_time:.2f}",
+                "Inference (ms/sample)": f"{(test_time / len(y_test)) * 1000:.3f}",
+            }
+        )
 
     results_df = pd.DataFrame(results)
     print("\n" + "=" * 80)

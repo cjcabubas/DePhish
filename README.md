@@ -84,6 +84,30 @@ If PowerShell blocks `npm.ps1`, use `npm.cmd` in place of `npm`. If ML fails to 
 
 Account and admin dashboards use live saved-scan totals, assessment breakdowns, 30-day UTC activity, and common indicators. Admin statistics contain aggregate data across accounts; regular users see only their own data. Community reports, admin review, and Learn modules are implemented. Scan History, Reports, and verified Threat Indicators remain separate. Domain records do not establish who created a website. Link risk weights are provisional, and Filipino/Taglish detection is not validated.
 
+## Development checks
+
+Install JavaScript dependencies with `npm --prefix client ci` and `npm --prefix server ci`.
+For Python development tools, run `.\.venv\Scripts\python.exe -m pip install -r ML/requirements-dev.txt`.
+From the repository root:
+
+```powershell
+npm run check
+.\.venv\Scripts\python.exe -m ruff check ML
+.\.venv\Scripts\python.exe -m ruff format --check ML
+.\.venv\Scripts\python.exe -m pytest ML/tests
+```
+
+`npm run check` checks formatting, lints client and server code, runs both JavaScript test suites,
+and builds the frontend. Use `npm run format` and `.\.venv\Scripts\python.exe -m ruff format ML`
+to apply formatting. The JavaScript tools are installed in `client/node_modules` and shared by the root scripts.
+
+The server suite skips external integration tests by default. To verify MongoDB with isolated,
+temporary collections, configure working credentials in `server/.env`, set
+`DEPHISH_DATABASE_TEST=1` and `DEPHISH_REPORT_DATABASE_TEST=1`, then run the server tests.
+To exercise the real Express-to-ML pipeline, start the ML service and set
+`ML_INTEGRATION_URL=http://127.0.0.1:8000` before running the server tests.
+Database authentication failures must be resolved in the local environment; never commit credentials.
+
 ## Project guides
 
 - [Frontend](client/README.md)

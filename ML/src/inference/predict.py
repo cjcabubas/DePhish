@@ -4,14 +4,12 @@ Provides PhishingDetector class for single and batch predictions,
 risk scoring (0-100), risk levels, confidence, and explainable indicator reporting.
 """
 
-import os
 import sys
 import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import joblib
-import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 if str(BASE_DIR) not in sys.path:
@@ -19,7 +17,11 @@ if str(BASE_DIR) not in sys.path:
 
 from src.features.text_features import CombinedFeaturePipeline
 from src.features.url_features import extract_urls, analyze_url
-from src.features.indicator_features import extract_indicators, classify_phishing_type, INDICATOR_PATTERNS
+from src.features.indicator_features import (
+    extract_indicators,
+    classify_phishing_type,
+    INDICATOR_PATTERNS,
+)
 from src.inference.evidence import detailed_indicators
 from src.inference.explanation import explain_model
 
@@ -28,12 +30,20 @@ def score_prediction(phishing_prob: float) -> Dict[str, Any]:
     """Model estimate, not a guarantee. Thresholds retained, not tuned on test data."""
     if not 0 <= phishing_prob <= 1:
         raise ValueError("Probability must be between zero and one.")
-    prediction, level = ("Phishing", "High Risk") if phishing_prob >= .70 else (
-        ("Suspicious", "Medium Risk") if phishing_prob >= .35 else ("Legitimate", "Low Risk"))
-    return {"prediction": prediction, "risk_level": level,
-            "risk_score": round(phishing_prob * 100, 1),
-            # Confidence is binary model confidence, not a third-class probability.
-            "confidence": round(max(phishing_prob, 1 - phishing_prob), 4)}
+    prediction, level = (
+        ("Phishing", "High Risk")
+        if phishing_prob >= 0.70
+        else (
+            ("Suspicious", "Medium Risk") if phishing_prob >= 0.35 else ("Legitimate", "Low Risk")
+        )
+    )
+    return {
+        "prediction": prediction,
+        "risk_level": level,
+        "risk_score": round(phishing_prob * 100, 1),
+        # Confidence is binary model confidence, not a third-class probability.
+        "confidence": round(max(phishing_prob, 1 - phishing_prob), 4),
+    }
 
 
 class PhishingDetector:
@@ -57,7 +67,11 @@ class PhishingDetector:
         self._load_artifacts()
 
     def _load_artifacts(self):
-        metadata_path = self.models_dir / "metadata-v1.json" if self.use_legacy and (self.models_dir / "metadata-v1.json").exists() else self.meta_path
+        metadata_path = (
+            self.models_dir / "metadata-v1.json"
+            if self.use_legacy and (self.models_dir / "metadata-v1.json").exists()
+            else self.meta_path
+        )
         if metadata_path.exists():
             self.metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         artifact = self.metadata.get("pipeline_file") if not self.use_legacy else None
@@ -79,13 +93,15 @@ class PhishingDetector:
     def classify(self, original_text):
         """Model-only contract. The serialized estimator owns its frozen normalization."""
         if not original_text or not original_text.strip():
-            raise ValueError('Message must contain non-whitespace text.')
+            raise ValueError("Message must contain non-whitespace text.")
         probability = float(self.predict_probabilities([original_text])[0, 1])
-        return {**score_prediction(probability),
-                'probabilities': {'phishing': probability, 'legitimate': 1 - probability},
-                'model_version': self.metadata.get('version', '1.0.0'),
-                'model_limitations': self.metadata.get('limitations', []),
-                'model_explanation': explain_model(self.model, original_text, probability)}
+        return {
+            **score_prediction(probability),
+            "probabilities": {"phishing": probability, "legitimate": 1 - probability},
+            "model_version": self.metadata.get("version", "1.0.0"),
+            "model_limitations": self.metadata.get("limitations", []),
+            "model_explanation": explain_model(self.model, original_text, probability),
+        }
 
     def analyze(self, text: str, message_type: str = "auto") -> Dict[str, Any]:
         """
@@ -120,12 +136,16 @@ class PhishingDetector:
 
         # 5. Phishing type categorization
         phishing_type = classify_phishing_type(indicators, has_url=bool(analyzed_urls))
-        specific_types = {'secret_disclosure': 'Security Secret Solicitation',
-                          'payment_redirection': 'Payment Redirection',
-                          'remote_access': 'Remote Access Solicitation',
-                          'security_bypass': 'Security Bypass Request'}
-        phishing_type = next((specific_types[i['category']] for i in indicators
-                              if i['category'] in specific_types), phishing_type)
+        specific_types = {
+            "secret_disclosure": "Security Secret Solicitation",
+            "payment_redirection": "Payment Redirection",
+            "remote_access": "Remote Access Solicitation",
+            "security_bypass": "Security Bypass Request",
+        }
+        phishing_type = next(
+            (specific_types[i["category"]] for i in indicators if i["category"] in specific_types),
+            phishing_type,
+        )
 
         # 6. Auto-detect message type if requested
         detected_type = message_type
@@ -138,7 +158,9 @@ class PhishingDetector:
                 "legitimate": round(legit_prob, 4),
                 "phishing": round(phishing_prob, 4),
             },
-            "phishing_type": phishing_type if decision["prediction"] != "Legitimate" else "Not established",
+            "phishing_type": phishing_type
+            if decision["prediction"] != "Legitimate"
+            else "Not established",
             "detected_indicators": indicators,
             "detected_urls": analyzed_urls,
             "message_type": detected_type,

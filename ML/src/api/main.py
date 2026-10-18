@@ -5,6 +5,7 @@ Provides endpoints for health check, model metadata, single and batch message an
 
 import sys
 import json
+import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Literal
 
@@ -25,6 +26,7 @@ from contextlib import asynccontextmanager
 
 # Global detector instance
 detector: Optional[PhishingDetector] = None
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -65,18 +67,22 @@ def get_detector() -> PhishingDetector:
         try:
             detector = PhishingDetector()
         except Exception as exc:
+            logger.exception("Model artifacts could not be loaded")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Model artifacts not loaded. Please train the model first. Error: {str(exc)}",
-            )
+                detail="Model artifacts are unavailable. Please try again later.",
+            ) from exc
     return detector
 
 
 # Pydantic Schemas
 class AnalyzeRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=5000, description="Raw message or email text to scan")
-    type: Literal["email", "sms", "auto"] = Field("auto", description="Type of message: 'email', 'sms', or 'auto'")
-
+    text: str = Field(
+        ..., min_length=1, max_length=5000, description="Raw message or email text to scan"
+    )
+    type: Literal["email", "sms", "auto"] = Field(
+        "auto", description="Type of message: 'email', 'sms', or 'auto'"
+    )
 
     @field_validator("text")
     @classmethod
@@ -137,7 +143,9 @@ class AnalyzeResponse(BaseModel):
 
 
 class BatchAnalyzeRequest(BaseModel):
-    messages: List[AnalyzeRequest] = Field(..., min_length=1, max_length=100, description="List of messages to scan")
+    messages: List[AnalyzeRequest] = Field(
+        ..., min_length=1, max_length=100, description="List of messages to scan"
+    )
 
 
 class BatchAnalyzeResponse(BaseModel):
@@ -151,13 +159,13 @@ class IndicatorRequest(AnalyzeRequest):
     normalized_text: Optional[str] = Field(None, max_length=20000)
 
 
-@app.post('/api/classify', tags=['Inference'])
+@app.post("/api/classify", tags=["Inference"])
 def classify_text(req: AnalyzeRequest):
     """Model-only endpoint used by the scan orchestrator."""
     return get_detector().classify(req.text)
 
 
-@app.post('/api/indicators', tags=['Inference'])
+@app.post("/api/indicators", tags=["Inference"])
 def inspect_indicators(req: IndicatorRequest):
     """Independent of model availability; URL presence comes from the artifact extractor."""
     return analyze_indicators(req.text, has_url=req.has_url, normalized_text=req.normalized_text)
@@ -224,4 +232,5 @@ def batch_analyze(req: BatchAnalyzeRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
