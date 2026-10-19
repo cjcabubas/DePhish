@@ -23,18 +23,12 @@ export function createEmailOtpService({
   email,
   secret,
   now = () => Date.now(),
+  randomCode = () => randomInt(0, 1_000_000),
 }) {
   const codeHash = (purpose, address, code) =>
     digest(secret, `${purpose}:${address}:${code}`);
   const tokenHash = (token) => digest(secret, `reset:${token}`);
-  async function issue({
-    address,
-    purpose,
-    name,
-    userId,
-    action,
-    challengeToken,
-  }) {
+  async function issue({ address, purpose, name, userId, challengeToken }) {
     const current = await otps.get(address, purpose);
     const time = now();
     if (current && time - current.lastSentAt.getTime() < 60_000)
@@ -48,7 +42,7 @@ export function createEmailOtpService({
       throw throttled(
         "Too many code requests for this email. Please try again later.",
       );
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const code = String(randomCode()).padStart(6, "0");
     const reserved = await otps.put(address, purpose, {
       email: address,
       purpose,
@@ -64,9 +58,7 @@ export function createEmailOtpService({
           ? current.requestCount + 1
           : 1,
       attempts: 0,
-      name,
       userId,
-      action,
       challengeHash: challengeToken
         ? digest(secret, `mfa:${challengeToken}`)
         : undefined,
@@ -177,7 +169,6 @@ export function createEmailOtpService({
         purpose: action ? "mfa_enable" : "mfa_disable",
         name: user.name,
         userId: user._id,
-        action,
       });
     },
     async confirmMfaSetting(user, code, enabled) {
@@ -186,7 +177,7 @@ export function createEmailOtpService({
       if (
         !row ||
         String(row.userId) !== String(user._id) ||
-        row.action !== enabled
+        row.purpose !== purpose
       )
         return null;
       return users.setMfa(user._id, enabled);

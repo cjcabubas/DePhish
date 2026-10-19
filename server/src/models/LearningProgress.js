@@ -1,4 +1,8 @@
 import mongoose from "mongoose";
+import {
+  readLearningModules,
+  storeLearningModules,
+} from "../services/learningProgressService.js";
 
 // Tracks per-user lesson completion and quiz scores for the Learn module.
 // One document per user, updated in place via upsert to keep the collection lean.
@@ -6,7 +10,6 @@ import mongoose from "mongoose";
 const quizAttemptSchema = new mongoose.Schema(
   {
     score: { type: Number, required: true, min: 0, max: 100 },
-    passed: { type: Boolean, required: true },
     attemptedAt: { type: Date, default: () => new Date() },
   },
   { _id: false },
@@ -16,8 +19,8 @@ const sectionProgressSchema = new mongoose.Schema(
   {
     sectionIndex: { type: Number, required: true },
     quizAttempts: { type: [quizAttemptSchema], default: [] },
-    bestScore: { type: Number, default: null },
-    passed: { type: Boolean, default: false },
+    bestScore: Number,
+    passed: Boolean,
   },
   { _id: false },
 );
@@ -47,28 +50,34 @@ const schema = new mongoose.Schema(
 );
 // userId unique:true above already creates the index — no schema.index() needed.
 
-const LearningProgress =
-  mongoose.models.LearningProgress ||
-  mongoose.model("LearningProgress", schema, "learning_progress");
-
-export function createLearningProgressRepository() {
+export function createLearningProgressRepository(
+  collectionName = "learning_progress",
+) {
+  const LearningProgress =
+    mongoose.models.LearningProgress ||
+    mongoose.model("LearningProgress", schema, collectionName);
   return {
     init: () => LearningProgress.init(),
 
     // Return the full progress doc for a user, or null.
-    getByUser: (userId) => LearningProgress.findOne({ userId }).lean(),
+    getByUser: async (userId) => {
+      const doc = await LearningProgress.findOne({ userId }).lean();
+      return doc ? { ...doc, modules: readLearningModules(doc.modules) } : null;
+    },
 
     // Upsert the whole modules array for a user.
-    save: (userId, modules) =>
-      LearningProgress.findOneAndUpdate(
+    save: async (userId, modules) => {
+      const doc = await LearningProgress.findOneAndUpdate(
         { userId },
-        { $set: { modules } },
+        { $set: { modules: storeLearningModules(modules) } },
         {
           upsert: true,
           new: true,
           setDefaultsOnInsert: true,
           runValidators: true,
         },
-      ).lean(),
+      ).lean();
+      return { ...doc, modules: readLearningModules(doc.modules) };
+    },
   };
 }

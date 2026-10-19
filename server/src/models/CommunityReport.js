@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { storeReport, readOwned } from "../services/storageFormat.js";
 
 export function createReportRepository(
   collectionName = "reports",
@@ -24,9 +25,6 @@ export function createReportRepository(
       submittedBy: {
         type: String,
         enum: ["user", "guest"],
-        default: function () {
-          return this.userId ? "user" : "guest";
-        },
       },
       originallySubmittedAsGuest: { type: Boolean, default: false },
       sourceScanId: { type: mongoose.Schema.Types.ObjectId, default: null },
@@ -105,30 +103,40 @@ export function createReportRepository(
       await Threat.init();
     },
     create: async (fields, session) =>
-      session
-        ? (await Report.create([fields], { session }))[0]
-        : Report.create(fields),
+      readOwned(
+        session
+          ? (await Report.create([storeReport(fields)], { session }))[0]
+          : await Report.create(storeReport(fields)),
+        "analysis",
+      ),
     claimGuest: (guestId, userId, session) =>
       Report.updateMany(
         { guestId, userId: null },
         {
           $set: {
             userId,
-            submittedBy: "user",
             originallySubmittedAsGuest: true,
           },
+          $unset: { submittedBy: 1 },
         },
         { session },
       ),
-    find: (id) => Report.findOne({ _id: id, ...live() }).lean(),
+    find: async (id) =>
+      readOwned(
+        await Report.findOne({ _id: id, ...live() }).lean(),
+        "analysis",
+      ),
     unreadCount: (userId) =>
       Report.countDocuments({ userId, unread: true, ...live() }),
-    markRead: (id, userId, revision) =>
-      Report.findOneAndUpdate(
-        { _id: id, userId, revision, ...live() },
-        { $set: { unread: false } },
-        { new: true },
-      ).lean(),
+    markRead: async (id, userId, revision) =>
+      readOwned(
+        await Report.findOneAndUpdate(
+          { _id: id, userId, revision, ...live() },
+          { $set: { unread: false } },
+          { new: true },
+        ).lean(),
+        "analysis",
+      ),
     async list({ userId, status, page = 1 }) {
       const scope = { ...live(), ...(userId ? { userId } : {}) };
       const filter = { ...scope, ...(status ? { status } : {}) };
@@ -146,7 +154,7 @@ export function createReportRepository(
         ),
       ]);
       return {
-        reports,
+        reports: reports.map((row) => readOwned(row, "analysis")),
         total,
         page,
         counts: {
@@ -205,7 +213,7 @@ export function createReportRepository(
             { session },
           );
         }
-        return report;
+        return readOwned(report, "analysis");
       });
     },
     async threats(page = 1, { kind = "", search = "", days = 0 } = {}) {

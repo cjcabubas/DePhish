@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import bcrypt from "bcryptjs";
 import { createEmailOtpService } from "../src/services/emailOtpService.js";
 
-function setup({ send = async () => {}, start = 1_700_000_000_000 } = {}) {
+function setup({
+  send = async () => {},
+  start = 1_700_000_000_000,
+  randomCode,
+} = {}) {
   let time = start,
     id = 0;
   const rows = new Map(),
@@ -97,6 +101,7 @@ function setup({ send = async () => {}, start = 1_700_000_000_000 } = {}) {
     email,
     secret: "unit-test-secret-with-sufficient-entropy",
     now: () => time,
+    randomCode,
   });
   return {
     service,
@@ -110,26 +115,18 @@ function setup({ send = async () => {}, start = 1_700_000_000_000 } = {}) {
 }
 
 test("OTP is a six-character numeric string including leading zeros and verifies once", async () => {
-  let harness;
-  harness = setup({
-    send: async (message) => {
-      if (message.code.startsWith("0")) harness.leading = message.code;
-    },
+  const harness = setup({ randomCode: () => 42 });
+  // Production uses crypto.randomInt; a fixed sample makes the padding check deterministic.
+  await harness.service.requestRegistration({
+    name: "U",
+    email: "leading@example.test",
   });
-  // A cryptographically random generator is used in production; repeat bounded test issuances until a leading zero occurs.
-  for (let i = 0; i < 30 && !harness.leading; i++) {
-    const email = `u${i}@example.test`;
-    await harness.service.requestRegistration({ name: "U", email });
-  }
   for (const sent of harness.sent) {
     assert.equal(typeof sent.code, "string");
     assert.match(sent.code, /^\d{6}$/);
   }
-  const target = harness.sent.find((item) => item.code.startsWith("0"));
-  assert.ok(
-    target,
-    "randomly generated six digit codes preserve leading zeros",
-  );
+  const target = harness.sent[0];
+  assert.equal(target.code, "000042");
   const row = await harness.service.register({
     name: "U",
     email: target.to,
@@ -315,6 +312,9 @@ test("MFA uses its own purpose and cannot return a user until the matching chall
   );
   await h.service.issueMfaSetting(account, true);
   assert.ok(h.rows.has(account.email + ":mfa_enable"));
+  assert.equal(h.rows.get(account.email + ":mfa_enable").name, undefined);
+  assert.equal(h.rows.get(account.email + ":mfa_enable").action, undefined);
+  assert.equal(h.sent.at(-1).name, account.name);
   assert.equal(h.rows.get(account.email + ":mfa_login").codeHash, undefined);
   const changed = await h.service.confirmMfaSetting(
     account,

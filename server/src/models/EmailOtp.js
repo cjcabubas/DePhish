@@ -17,8 +17,6 @@ const schema = new mongoose.Schema(
     codeHash: { type: String, select: false },
     challengeHash: { type: String, select: false },
     userId: { type: mongoose.Schema.Types.ObjectId },
-    name: String,
-    action: Boolean,
     codeExpiresAt: { type: Date, required: true },
     expiresAt: { type: Date, required: true, expires: 0 },
     lastSentAt: { type: Date, required: true },

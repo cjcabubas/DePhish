@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { apiRateLimit } from "../middleware/rateLimits.js";
-import { validLearningProgress } from "../services/learningProgressService.js";
+import {
+  validLearningProgress,
+  normalizeLearningInput,
+} from "../services/learningProgressService.js";
 
 // Progress is self-reported by the client; validate its structure before storage.
 
@@ -37,7 +40,10 @@ export function learnRoutes({ users, progress }) {
     if (!validLearningProgress(modules))
       return res.status(400).json({ message: "Invalid learning progress." });
     try {
-      const doc = await progress.save(req.user._id, modules);
+      const doc = await progress.save(
+        req.user._id,
+        normalizeLearningInput(modules),
+      );
       res.json({ modules: doc.modules });
     } catch {
       res

@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import {
+  storeAnalysis,
+  storeOwned,
+  readOwned,
+} from "../services/storageFormat.js";
 export function createScanRepository(collectionName = "scan_reports") {
   const schema = new mongoose.Schema(
     {
@@ -11,14 +16,11 @@ export function createScanRepository(collectionName = "scan_reports") {
       submittedBy: {
         type: String,
         enum: ["user", "guest"],
-        default: function () {
-          return this.userId ? "user" : "guest";
-        },
       },
       originallySubmittedAsGuest: { type: Boolean, default: false },
-      source: { type: String, enum: ["account", "guest"], default: "account" },
+      source: { type: String, enum: ["account", "guest"] },
       message: { type: String, maxlength: 5000 },
-      tosAcknowledged: { type: Boolean, default: false },
+      tosAcknowledged: Boolean,
       consentId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "ScanConsent",
@@ -40,43 +42,78 @@ export function createScanRepository(collectionName = "scan_reports") {
     mongoose.model("ScanReport", schema, collectionName);
   return {
     init: () => Scan.init(),
-    create: async (fields, session) =>
-      session
-        ? (await Scan.create([fields], { session }))[0]
-        : Scan.create(fields),
+    create: async (fields, session) => {
+      const stored = {
+        ...storeOwned(fields),
+        result: storeAnalysis(fields.result),
+      };
+      return readOwned(
+        session
+          ? (await Scan.create([stored], { session }))[0]
+          : await Scan.create(stored),
+        "result",
+      );
+    },
     claimGuest: (guestId, userId, session) =>
       Scan.updateMany(
         { guestId, userId: null },
         {
           $set: {
             userId,
-            submittedBy: "user",
             originallySubmittedAsGuest: true,
-            source: "account",
           },
+          $unset: { submittedBy: 1, source: 1 },
         },
         { session },
       ),
-    findOwned: (id, userId) =>
-      Scan.findOne({
-        _id: id,
-        userId,
-        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-      }).lean(),
-    list: (userId, limit) =>
-      Scan.find({
-        userId,
-        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-      })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean(),
+    findOwned: async (id, userId) =>
+      readOwned(
+        await Scan.findOne({
+          _id: id,
+          userId,
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+        }).lean(),
+        "result",
+      ),
+    list: async (userId, limit) =>
+      (
+        await Scan.find({
+          userId,
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+        })
+          .sort({ createdAt: -1 })
+          .limit(limit)
+          .lean()
+      ).map((row) => readOwned(row, "result")),
     async stats(userId, since, end = new Date()) {
       const match = userId
         ? { userId: new mongoose.Types.ObjectId(userId) }
-        : { $or: [{ userId: { $type: "objectId" } }, { source: "guest" }] };
+        : {
+            $or: [
+              { userId: { $type: "objectId" } },
+              { guestId: { $type: "string" } },
+              { source: "guest" },
+              { originallySubmittedAsGuest: true },
+            ],
+          };
       const countWhere = (prediction) => ({
-        $sum: { $cond: [{ $eq: ["$result.prediction", prediction] }, 1, 0] },
+        $sum: {
+          $cond: [
+            {
+              $eq: [
+                {
+                  $ifNull: [
+                    "$result.prediction",
+                    "$result.assessment.classification",
+                  ],
+                },
+                prediction,
+              ],
+            },
+            1,
+            0,
+          ],
+        },
       });
       const [data] = await Scan.aggregate([
         {
@@ -139,8 +176,20 @@ export function createScanRepository(collectionName = "scan_reports") {
                         $map: {
                           input: {
                             $cond: [
-                              { $isArray: "$result.detected_indicators" },
-                              "$result.detected_indicators",
+                              {
+                                $isArray: {
+                                  $ifNull: [
+                                    "$result.detected_indicators",
+                                    "$result.indicatorAnalysis.indicators",
+                                  ],
+                                },
+                              },
+                              {
+                                $ifNull: [
+                                  "$result.detected_indicators",
+                                  "$result.indicatorAnalysis.indicators",
+                                ],
+                              },
                               [],
                             ],
                           },
